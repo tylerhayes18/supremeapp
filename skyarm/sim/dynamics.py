@@ -69,10 +69,10 @@ def build_urdf(payload_kg: float = spec.PAYLOAD_KG) -> str:
     stack = spec.CARRIAGE_STACK_MM / 1000.0
 
     # masses from the spec budget; motor masses ride on the proximal link
-    m_carriage = spec.CARRIAGE_MASS_KG + 2.2 + spec.NEMA24.mass_kg
-    m_upper = spec.M_UPPER_TUBE
+    m_carriage = spec.CARRIAGE_MASS_KG + 3.0 + spec.NEMA34.mass_kg
+    m_upper = spec.M_UPPER_LINK
     m_elbow_assy = spec.M_ELBOW_ASSY            # at the elbow, on upper link
-    m_forearm = spec.M_FOREARM_TUBE
+    m_forearm = spec.M_FOREARM_LINK
     m_wrist = spec.M_WRIST_CLUSTER              # at wrist, on forearm link
     m_tip = spec.M_GRIPPER + payload_kg
 
@@ -198,9 +198,9 @@ class Dynamics:
     # gravity-feedforward + PD, torque-clamped to the gearbox capacity.
     # kd must satisfy kd/I < timestep rate or the discrete loop chatters
     # (the wrist, with ~0.013 kg.m^2 reflected inertia, found that out).
-    GAINS = {"gx": (40000.0, 4000.0), "gy": (30000.0, 3000.0),
-             "yaw": (400.0, 40.0), "shoulder": (1500.0, 150.0),
-             "elbow": (600.0, 60.0), "wrist": (40.0, 1.5)}
+    GAINS = {"gx": (60000.0, 6000.0), "gy": (50000.0, 5000.0),
+             "yaw": (900.0, 90.0), "shoulder": (4000.0, 400.0),
+             "elbow": (1500.0, 150.0), "wrist": (120.0, 5.0)}
 
     def run(self, target_fn, seconds) -> SimResult:
         """Step with feedforward+PD control clamped to gearbox capacity."""
@@ -312,7 +312,7 @@ def mission(seconds_per_leg=2.5) -> SimResult:
     return res
 
 
-def payload_sweep(max_kg=4.0, step=0.5):
+def payload_sweep(max_kg=14.0, step=2.0):
     """Increase payload at full horizontal reach; report droop."""
     rows = []
     kg = 0.5

@@ -20,19 +20,22 @@ from . import spec
 # parts in the same cluster may touch by design; cross-cluster contacts
 # listed here are also intended (tube-in-clamp, stacked interfaces)
 ALLOWED = {
-    frozenset(("upper-arm-tube", "shoulder-clevis")),
-    frozenset(("upper-arm-tube", "elbow-bracket")),
-    frozenset(("forearm-tube", "elbow-clevis")),
-    frozenset(("forearm-tube", "wrist-bracket")),
+    frozenset(("upperlink-upper_root", "shoulder-output")),
+    frozenset(("upperlink-upper_tip", "elbow-housing")),
+    frozenset(("upperlink-upper_tip", "elbow-motor")),
+    frozenset(("forearmlink-forearm_root", "elbow-output")),
+    frozenset(("forearmlink-forearm_tip", "wrist-housing")),
+    frozenset(("forearmlink-forearm_tip", "wrist-motor")),
     frozenset(("yaw-column", "shoulder-housing")),
     frozenset(("yaw-column", "shoulder-cover")),
     frozenset(("yaw-output", "yaw-column")),
-    frozenset(("wrist-clevis", "roll-housing")),
-    frozenset(("wrist-clevis", "roll-motor")),
-    frozenset(("roll-pulley", "gripper-base")),
-    frozenset(("gripper-base", "gripper-finger")),
-    frozenset(("gripper-base", "gripper-servo")),
-    frozenset(("gripper-servo", "gripper-finger")),
+    frozenset(("wrist-output", "roll-housing")),
+    frozenset(("roll-pulley", "gripper-body")),
+    frozenset(("roll-housing", "roll-motor")),
+    frozenset(("gripper-body", "gripper-jaw")),
+    frozenset(("gripper-body", "gripper-motor")),
+    frozenset(("forearmlink-forearm_tip", "roll-housing")),
+    frozenset(("forearmlink-forearm_tip", "roll-motor")),
 }
 VOL_TOL_MM3 = 300.0      # ignore sub-0.3 cm3 modelling kisses
 

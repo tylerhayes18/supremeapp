@@ -109,7 +109,7 @@ def _gearbox(out, label, cs, frame):
     t = cs.disc_thickness
     e = cs.eccentricity
     nema_size = NEMA_OF[cs.name]
-    motor_len = {17: 48, 23: 81, 24: 100}[nema_size]
+    motor_len = {17: 48, 23: 81, 24: 100, 34: 156}[nema_size]
 
     _place(out, f"{label}-motor", _motor_block(nema_size, motor_len),
            frame, (0, 0, 0), C_MOTOR, (0, 0, -90))
@@ -218,80 +218,73 @@ def machine(pose: kin.Pose | None = None, include_gantry: bool = True) -> list:
             _place(out, "gantry-motor", mo, f, (0, 0, 0), C_MOTOR,
                    (np.array(zdir, float) * -300).tolist())
 
-    # ---- yaw module under the carriage --------------------------------
-    f_yaw = _basis((cx, cy, CEIL - 54), (0, 0, -1), (1, 0, 0))
+    # ---- yaw module under the carriage (offset -a so the big shoulder
+    # gearbox below clears it) ------------------------------------------
+    yaw_org = np.array([cx, cy, CEIL - 54.0]) - a * 40.0
+    f_yaw = _basis(yaw_org, (0, 0, -1), (1, 0, 0))
     _gearbox(out, "yaw", spec.CYCLO_YAW, f_yaw)
 
-    # column: yaw output -> shoulder gearbox ring (strap-clamps the ring OD)
-    col_top, col_bot = CEIL - 118.0, p_sh[2] + 73.0
-    m = _box((90, 90, col_top - col_bot))
-    m.apply_translation(((p_sh + a * 55)[0], (p_sh + a * 55)[1],
-                         (col_top + col_bot) / 2))
+    # column: yaw output -> shoulder gearbox housing band
+    d_face_sh = (cad_parts.W_OUT["shoulder"]
+                 + cycloidal.output_face_z(spec.CYCLO_BIG))
+    col_y = cad_parts.W_OUT["shoulder"] + cycloidal.output_face_z(
+        spec.CYCLO_BIG) / 2
+    col_top, col_bot = CEIL - 122.0, p_sh[2] + spec.CYCLO_BIG.housing_od / 2 + 4
+    m = _box((100, 170, col_top - col_bot))
+    col_at = p_sh + a * (col_y - 35.0)
+    m.apply_translation((col_at[0], col_at[1], (col_top + col_bot) / 2))
     out.append(Placed("yaw-column", m, C_PRINT, np.array([0, 0, 0.0])))
 
-    # ---- arm joints -----------------------------------------------------
-    def pitch_cluster(label, cs, joint, t_out, clevis_name, clevis_builder,
-                      bracket=None, t_in=None):
-        # distance from arm plane to the gearbox motor face; puts the
-        # output clevis bore exactly on the joint axis / arm plane
-        # (clevis plate 8 mm + half the tube clamp block)
-        d_face = (cycloidal.output_face_z(cs) + 0.2 + 8.0
-                  + (spec.TUBE_OD_MM + 18.0) / 2)
+    # ---- arm joints (gearboxes output toward the arm plane) -------------
+    for label, cs, joint, t_out in (
+            ("shoulder", spec.CYCLO_BIG, p_sh, t_up),
+            ("elbow", spec.CYCLO_MID, p_el, t_fo),
+            ("wrist", spec.CYCLO_SMALL, p_wr, t_ti)):
+        d_face = (cad_parts.W_OUT[label] + cycloidal.output_face_z(cs))
         f = _basis(joint + a * d_face, -a, t_out)
-        zo = _gearbox(out, label, cs, f)
-        clev = _part(clevis_name, clevis_builder)
-        _place(out, f"{label}-clevis", clev, f, (0, 0, zo + 0.2),
-               C_PRINT, (0, 0, 290))
-        if bracket is not None:
-            # input bracket: plate against the motor face, standoff web
-            # drops its clamp onto the incoming tube 60 mm before the joint
-            name, builder = bracket
-            br = _part(name, builder)
-            fb = _basis(joint - 60.0 * t_in + a * d_face, -a, t_in)
-            _place(out, f"{label}-bracket", br, fb, (0, 0, 0),
-                   C_PRINT, (0, 0, -160))
+        _gearbox(out, label, cs, f)
 
-    pitch_cluster("shoulder", spec.CYCLO_BIG, p_sh, t_up,
-                  "shoulder_clevis", cad_parts.shoulder_clevis)
-    pitch_cluster("elbow", spec.CYCLO_MID, p_el, t_fo,
-                  "forearm_clevis", cad_parts.forearm_clevis,
-                  bracket=("elbow_clevis", cad_parts.elbow_clevis), t_in=t_up)
-    pitch_cluster("wrist", spec.CYCLO_SMALL, p_wr, t_ti,
-                  "wrist_clevis", cad_parts.forearm_clevis,
-                  bracket=("wrist_bracket", cad_parts.wrist_bracket), t_in=t_fo)
+    # ---- printed link beams (local: z = beam axis, y = -a) --------------
+    def place_link(prefix, joint, t_dir, segs, builders):
+        x_dir = np.cross(-a, t_dir)
+        z0 = 0.0
+        for i, (seg_len, builder) in enumerate(zip(segs, builders)):
+            name, fn = builder
+            mesh = _part(name, fn)
+            fl = _basis(joint + t_dir * z0, t_dir, x_dir)
+            _place(out, f"{prefix}-{name}", mesh, fl, (0, 0, 0), C_PRINT,
+                   (0, 0, 60 + 70 * i))
+            z0 += seg_len
 
-    # tubes (stock aluminium): start 10 mm past the proximal joint (the
-    # output clamp sits at +30) and stop 40 mm before the distal joint so
-    # the links clear each other when the joints fold
-    for name, p0, p1 in (("upper-arm-tube", p_sh + t_up * 10, p_el - t_up * 40),
-                         ("forearm-tube", p_el + t_fo * 10, p_wr - t_fo * 40)):
-        seg = trimesh.creation.cylinder(radius=spec.TUBE_OD_MM / 2, height=1.0,
-                                        sections=28, segment=(p0, p1))
-        out.append(Placed(name, seg, C_ALU, np.array([0.0, 0, 0])))
+    place_link("upperlink", p_sh, t_up, cad_parts.UPPER_SEGS,
+               [("upper_root", cad_parts.upper_root),
+                ("upper_mid", cad_parts.upper_mid),
+                ("upper_mid2", lambda: cad_parts.upper_mid()),
+                ("upper_tip", cad_parts.upper_tip)])
+    place_link("forearmlink", p_el, t_fo, cad_parts.FOREARM_SEGS,
+               [("forearm_root", cad_parts.forearm_root),
+                ("forearm_mid", cad_parts.forearm_mid),
+                ("forearm_tip", cad_parts.forearm_tip)])
 
-    # ---- wrist roll + gripper ------------------------------------------
+    # ---- wrist roll + leadscrew gripper ---------------------------------
     f_roll = _basis(p_wr + t_ti * 55.0, t_ti, a)
     rh = _part("roll_housing", cad_parts.roll_housing)
-    _place(out, "roll-housing", rh, f_roll, (-28, 0, 0), C_PRINT, (0, 0, 120))
-    _place(out, "roll-motor", _motor_block(17, 48), f_roll, (-60, 0, 0),
+    _place(out, "roll-housing", rh, f_roll, (-32, 0, 0), C_PRINT, (0, 0, 120))
+    _place(out, "roll-motor", _motor_block(23, 81), f_roll, (-70, 0, 0),
            C_MOTOR, (0, 0, 60))
     rp = _part("roll_pulley", cad_parts.roll_pulley)
-    _place(out, "roll-pulley", rp, f_roll, (0, 0, 9), C_PRINT, (0, 0, 190))
-    gb = _part("gripper_base", cad_parts.gripper_base)
-    _place(out, "gripper-base", gb, f_roll, (0, 0, 27), C_GRIP, (0, 0, 260))
-    servo = _box((40, 20, 38))
-    servo.apply_translation((0, 0, 19))     # sit on the base plate
-    _place(out, "gripper-servo", servo, f_roll, (0, 10, 37.5), C_MOTOR,
-           (0, 0, 225))
+    _place(out, "roll-pulley", rp, f_roll, (0, 0, 11), C_PRINT, (0, 0, 190))
+    gb = _part("gripper_body", cad_parts.gripper_body)
+    _place(out, "gripper-body", gb, f_roll, (0, 0, 32), C_GRIP, (0, 0, 260))
+    # gripper jaws slide along the body's long axis (= a direction)
+    _place(out, "gripper-motor", _motor_block(17, 48),
+           _basis(p_wr + t_ti * 93.0 - a * 80.0, a, t_ti),
+           (0, 0, 0), C_MOTOR, tuple((-a * 80).tolist()))
     for side, mirrored in ((-1, False), (1, True)):
-        fi = _part(f"finger{side}", lambda m=mirrored: cad_parts.gripper_finger(m))
-        ff = _basis(p_wr + t_ti * 96.0 + a * (side * 15.0)
-                    - np.cross(t_ti, a) * 18.0, -a, t_ti)
-        rot = trimesh.transformations.rotation_matrix(
-            math.radians(-10 * side), (0, 0, 1))
-        fi.apply_transform(rot)
-        _place(out, "gripper-finger", fi, ff, (0, 0, side * -4.5), C_GRIP,
-               (0, 0, side * 330))
+        jaw = _part(f"jaw{side}", lambda m=mirrored: cad_parts.gripper_jaw(m))
+        fj = _basis(p_wr + t_ti * 99.0 + a * (side * 40.0), t_ti, a)
+        _place(out, "gripper-jaw", jaw, fj, (0, 0, 0), C_GRIP,
+               tuple((a * side * 120).tolist()))
     return out
 
 

@@ -109,6 +109,7 @@ NEMA = {
     17: dict(square=31.0, bolt_d=3.4, boss_d=22.3, shaft_d=5.0, face=42.3),
     23: dict(square=47.14, bolt_d=5.2, boss_d=38.4, shaft_d=8.0, face=57.0),
     24: dict(square=47.14, bolt_d=5.2, boss_d=38.4, shaft_d=8.0, face=60.0),
+    34: dict(square=69.6, bolt_d=6.6, boss_d=73.4, shaft_d=14.0, face=86.0),
 }
 
 
@@ -124,6 +125,15 @@ def dshaft_cutter(d: float, flat_depth: float, h: float, at=(0, 0, 0)):
         return shaft
     flat = box(flat_depth * 2, d + 2, h, (at[0] - d / 2, at[1], at[2]))
     return difference(shaft, flat)
+
+
+def shaft_flat_depth(d: float) -> float:
+    """Typical D-shaft flat depth for a given shaft diameter."""
+    if d <= 5.5:
+        return 0.5
+    if d >= 12.0:
+        return 1.5
+    return 1.0
 
 
 def check_part(mesh: trimesh.Trimesh, name: str, max_xyz=(250.0, 250.0, 250.0)):

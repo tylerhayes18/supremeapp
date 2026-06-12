@@ -66,8 +66,23 @@ ROOM = {
 X_TRAVEL_MM = ROOM["x_mm"] - 300.0   # truck end margins
 Y_TRAVEL_MM = ROOM["y_mm"] - 400.0   # carriage + endcap margins
 
-PAYLOAD_KG = 1.0            # rated payload at full reach
+PAYLOAD_KG = 6.8            # rated payload at full reach (15 lb)
 FLOOR_CLEARANCE_MM = 25.0   # softest z-stop above the floor
+
+# ---------------------------------------------------------------------------
+# Printed link beams (fully printed arm — no metal tube)
+#
+# Box-section beams in PETG-CF/PA-CF, printed standing in <=230 mm
+# segments joined by bolted register flanges.  Section sized by the
+# deflection/stress checks in skyarm/analysis.py; the beams taper to a
+# narrow neck at the distal joint so the links clear each other folding.
+# ---------------------------------------------------------------------------
+
+UPPER_BEAM = {"depth": 120.0, "width": 80.0, "wall": 6.0, "neck_depth": 50.0}
+FOREARM_BEAM = {"depth": 90.0, "width": 60.0, "wall": 5.0, "neck_depth": 44.0}
+PETG_CF_E_GPA = 8.0
+PETG_CF_FLEX_MPA = 70.0      # XY; derate to ~45% across layers
+PETG_CF_DENSITY = 1.29e-3    # kg/cm3 ... kg per cm3? (g/mm3 = 1.29e-3)
 
 # ---------------------------------------------------------------------------
 # Stock hardware (not printed)
@@ -76,7 +91,9 @@ FLOOR_CLEARANCE_MM = 25.0   # softest z-stop above the floor
 # 2" tube, not 1": beam analysis (skyarm/analysis.py) showed 37 mm of
 # elastic tip sag with 25.4 mm tube at full horizontal reach; 50.8 mm
 # x 2 mm brings it under 5 mm.
-TUBE_OD_MM = 50.8           # 2" aluminium round tube
+# 2" tube replaced by printed box beams (see UPPER_BEAM/FOREARM_BEAM);
+# constant kept for the legacy tube-clamp analysis history.
+TUBE_OD_MM = 50.8
 TUBE_WALL_MM = 2.0
 VSLOT_X_RAIL = "2040 V-slot, 2 pcs, length = room x"
 # C-beam, not 2060: beam-bending analysis (skyarm/analysis.py) found a
@@ -86,11 +103,12 @@ BRIDGE_I_CM4 = 79.0          # C-beam 4080 strong-axis second moment
 BRIDGE_KG_PER_M = 2.98
 RAIL_I_CM4 = 7.6             # 2040 strong axis
 ALU_E_GPA = 69.0
-BELT = "GT2, 9 mm wide, steel-core"
+# 15 mm GT3 steel-core belt (9 mm GT2 failed the margin at 15 lb)
+BELT = "GT3 2M, 15 mm wide, steel-core"
 PULLEY_TEETH = 20
 BELT_PITCH_MM = 2.0
 MM_PER_REV = PULLEY_TEETH * BELT_PITCH_MM  # 40 mm of travel per motor rev
-WHEEL = "Solid V wheel, 24.39 mm OD, with 625ZZ bearings"
+WHEEL = "Xtreme solid V wheel (620 N rated), 24.39 mm OD, 625ZZ bearings"
 CYCLO_BEARING = "6705ZZ thin-section (25x32x4) on eccentric cam"
 OUTPUT_BEARING = "6810ZZ thin-section (50x65x7) on output flange"
 
@@ -117,8 +135,8 @@ NEMA23 = Motor("NEMA 23 closed-loop", "StepperOnline CL57T + 23E2.2 (2.2 Nm)",
                2.20, 1.05, 57.0, 81.0, True, 4000)
 NEMA24 = Motor("NEMA 24 closed-loop", "StepperOnline CL57T-V41 + 24E4.0 (4.0 Nm)",
                4.00, 1.70, 60.0, 100.0, True, 4000)
-SERVO_DS3225 = Motor("DS3225 servo", "25 kg·cm waterproof digital servo",
-                     2.45, 0.06, 40.0, 20.0, False, 0)
+NEMA34 = Motor("NEMA 34 closed-loop", "StepperOnline CL86T + 34E12.0 (12 Nm)",
+               12.00, 3.80, 86.0, 156.0, True, 4000)
 
 
 # ---------------------------------------------------------------------------
@@ -160,44 +178,42 @@ class Joint:
         return 360.0 / (counts * self.ratio)
 
 
-# Mass budget (printed parts in PETG-CF + motors + tube), measured from
-# each joint axis with everything distal held horizontal.
-M_UPPER_TUBE = 1.05      # 2" tube + clamps, CG at mid upper arm
-M_ELBOW_ASSY = 1.60      # elbow motor + gearbox + housing at elbow axis
-M_FOREARM_TUBE = 0.70
-M_WRIST_CLUSTER = 0.90   # wrist pitch+roll motors, housings, near wrist axis
-M_GRIPPER = 0.40
+# Mass budget (printed PETG-CF beams + motors), measured from each
+# joint axis with everything distal held horizontal.
+M_UPPER_LINK = 2.40      # printed box beam 120x80 + flanges, CG mid-link
+M_ELBOW_ASSY = 3.40      # NEMA 24 + 40:1 cyclo + bearings at elbow axis
+M_FOREARM_LINK = 1.40    # printed box beam 90x60 (CAD volume roll-up)
+M_WRIST_CLUSTER = 2.60   # wrist NEMA 23 + 15:1 cyclo + roll NEMA 23 + belt
+M_GRIPPER = 0.90         # leadscrew gripper + NEMA 17
 
 SHOULDER = Joint(
-    "J2 shoulder pitch", NEMA24, ratio=29, efficiency=0.65,
+    "J2 shoulder pitch", NEMA34, ratio=35, efficiency=0.65,
     gravity_loads=(
         (PAYLOAD_KG, ARM_REACH_MM),                       # payload at tip
         (M_GRIPPER, UPPER_ARM_MM + FOREARM_MM + 80.0),
         (M_WRIST_CLUSTER, UPPER_ARM_MM + FOREARM_MM),
-        (M_FOREARM_TUBE, UPPER_ARM_MM + FOREARM_MM / 2),
+        (M_FOREARM_LINK, UPPER_ARM_MM + FOREARM_MM / 2),
         (M_ELBOW_ASSY, UPPER_ARM_MM),
-        (M_UPPER_TUBE, UPPER_ARM_MM / 2),
+        (M_UPPER_LINK, UPPER_ARM_MM / 2),
     ),
     travel_deg=(-110.0, 110.0),
 )
 
 ELBOW = Joint(
-    "J3 elbow pitch", NEMA23, ratio=20, efficiency=0.65,
+    "J3 elbow pitch", NEMA24, ratio=40, efficiency=0.65,
     gravity_loads=(
         (PAYLOAD_KG, FOREARM_MM + WRIST_TO_TIP_MM),
         (M_GRIPPER, FOREARM_MM + 80.0),
         (M_WRIST_CLUSTER, FOREARM_MM),
-        (M_FOREARM_TUBE, FOREARM_MM / 2),
+        (M_FOREARM_LINK, FOREARM_MM / 2),
     ),
-    # +-105, not +-135: the mesh interference sweep (skyarm/interference.py)
-    # measured tube-on-tube collision beyond a 105 deg fold with 2" tube
+    # fold limited by link-on-link clearance, measured by the mesh
+    # interference sweep (skyarm/interference.py)
     travel_deg=(-105.0, 105.0),
 )
 
 WRIST_PITCH = Joint(
-    # 13:1 (not 11:1): PyBullet mission runs showed the wrist briefly
-    # saturating at 11:1 during fast leg blends — see sim/dynamics.py
-    "J4 wrist pitch", NEMA17, ratio=13, efficiency=0.70,
+    "J4 wrist pitch", NEMA23, ratio=15, efficiency=0.65,
     gravity_loads=(
         (PAYLOAD_KG, WRIST_TO_TIP_MM),
         (M_GRIPPER, 80.0),
@@ -206,23 +222,23 @@ WRIST_PITCH = Joint(
 )
 
 YAW = Joint(
-    "J1 yaw", NEMA23, ratio=15, efficiency=0.65,
+    "J1 yaw", NEMA24, ratio=18, efficiency=0.65,
     inertia_loads=(
         (PAYLOAD_KG, ARM_REACH_MM),
         (M_GRIPPER, UPPER_ARM_MM + FOREARM_MM + 80.0),
         (M_WRIST_CLUSTER, UPPER_ARM_MM + FOREARM_MM),
-        (M_FOREARM_TUBE, UPPER_ARM_MM + FOREARM_MM / 2),
+        (M_FOREARM_LINK, UPPER_ARM_MM + FOREARM_MM / 2),
         (M_ELBOW_ASSY, UPPER_ARM_MM),
-        (M_UPPER_TUBE, UPPER_ARM_MM / 2),
+        (M_UPPER_LINK, UPPER_ARM_MM / 2),
     ),
-    design_accel_rad_s2=2.0,      # 0 -> 90°/s in ~0.8 s, arm horizontal
+    design_accel_rad_s2=1.5,      # gentler with 15 lb on the hook
     travel_deg=(-180.0, 180.0),
 )
 
 WRIST_ROLL = Joint(
-    "J5 wrist roll", NEMA17, ratio=5, efficiency=0.90,   # GT2 belt stage
+    "J5 wrist roll", NEMA23, ratio=5, efficiency=0.90,   # GT3 belt stage
     inertia_loads=((PAYLOAD_KG, 60.0), (M_GRIPPER, 30.0)),
-    design_accel_rad_s2=20.0,
+    design_accel_rad_s2=15.0,
     travel_deg=(-180.0, 180.0),
 )
 
@@ -259,9 +275,10 @@ class GantryAxis:
         return MM_PER_REV / self.motor.encoder_counts
 
 
-# Moving-mass roll-up
-ARM_MASS_KG = (M_UPPER_TUBE + M_ELBOW_ASSY + M_FOREARM_TUBE + M_WRIST_CLUSTER
-               + M_GRIPPER + NEMA24.mass_kg + NEMA23.mass_kg + 2.2)  # +yaw module
+# Moving-mass roll-up: links + joint assemblies + shoulder motor/gearbox
+# + yaw module (NEMA 24 + 18:1 cyclo)
+ARM_MASS_KG = (M_UPPER_LINK + M_ELBOW_ASSY + M_FOREARM_LINK + M_WRIST_CLUSTER
+               + M_GRIPPER + NEMA34.mass_kg + 1.6 + NEMA24.mass_kg + 1.4)
 CARRIAGE_MASS_KG = 1.7
 # wheel rows 150 mm apart (was 110): V-wheel load check needed SF >= 2
 # against the arm-horizontal overturning moment
@@ -279,12 +296,13 @@ X_AXIS = GantryAxis("X rails (dual)", NEMA23, 2,
 GANTRY_AXES = (X_AXIS, Y_AXIS)
 
 # Arm joint speed limits used by the motion planner (deg/s at the joint)
-JOINT_SPEED_DPS = {"J1 yaw": 90.0, "J2 shoulder pitch": 60.0,
-                   "J3 elbow pitch": 90.0, "J4 wrist pitch": 120.0,
-                   "J5 wrist roll": 180.0}
-JOINT_ACCEL_DPS2 = {"J1 yaw": 180.0, "J2 shoulder pitch": 120.0,
-                    "J3 elbow pitch": 180.0, "J4 wrist pitch": 240.0,
-                    "J5 wrist roll": 360.0}
+# — derated from the 1 kg design: 15 lb swinging on a 1.3 m arm
+JOINT_SPEED_DPS = {"J1 yaw": 60.0, "J2 shoulder pitch": 45.0,
+                   "J3 elbow pitch": 60.0, "J4 wrist pitch": 90.0,
+                   "J5 wrist roll": 120.0}
+JOINT_ACCEL_DPS2 = {"J1 yaw": 120.0, "J2 shoulder pitch": 90.0,
+                    "J3 elbow pitch": 120.0, "J4 wrist pitch": 180.0,
+                    "J5 wrist roll": 240.0}
 
 
 # ---------------------------------------------------------------------------
@@ -323,25 +341,25 @@ class CycloSpec:
 
 # Output pin sizes set by the bending check in skyarm/analysis.py
 # (pins cantilever through the discs at full gearbox torque).
-CYCLO_BIG = CycloSpec(      # shoulder, 29:1, NEMA 24
-    "cyclo-big", NEMA24, pin_count=30, pin_circle_r=62.0, pin_r=3.0,
-    eccentricity=1.5, disc_thickness=9.0,
+CYCLO_BIG = CycloSpec(      # shoulder, 35:1, NEMA 34
+    "cyclo-big", NEMA34, pin_count=36, pin_circle_r=78.0, pin_r=3.5,
+    eccentricity=1.8, disc_thickness=12.0,
+    output_pin_count=8, output_pin_r=9.0, output_pin_circle_r=48.0)
+
+CYCLO_MID = CycloSpec(      # elbow 40:1, NEMA 24
+    "cyclo-mid", NEMA24, pin_count=41, pin_circle_r=62.0, pin_r=2.5,
+    eccentricity=1.4, disc_thickness=10.0,
     output_pin_count=6, output_pin_r=7.0, output_pin_circle_r=40.0)
 
-CYCLO_MID = CycloSpec(      # elbow 20:1 / yaw 15:1 share the housing size
-    "cyclo-mid", NEMA23, pin_count=21, pin_circle_r=50.0, pin_r=3.0,
-    eccentricity=1.5, disc_thickness=8.0,
-    output_pin_count=6, output_pin_r=5.5, output_pin_circle_r=32.0)
+CYCLO_YAW = CycloSpec(      # yaw 18:1, NEMA 24
+    "cyclo-yaw", NEMA24, pin_count=19, pin_circle_r=58.0, pin_r=3.5,
+    eccentricity=2.2, disc_thickness=9.0,
+    output_pin_count=6, output_pin_r=6.0, output_pin_circle_r=35.0)
 
-CYCLO_YAW = CycloSpec(      # yaw 15:1
-    "cyclo-yaw", NEMA23, pin_count=16, pin_circle_r=50.0, pin_r=3.5,
+CYCLO_SMALL = CycloSpec(    # wrist pitch 15:1, NEMA 23
+    "cyclo-small", NEMA23, pin_count=16, pin_circle_r=44.0, pin_r=3.0,
     eccentricity=1.8, disc_thickness=8.0,
-    output_pin_count=6, output_pin_r=5.5, output_pin_circle_r=32.0)
-
-CYCLO_SMALL = CycloSpec(    # wrist pitch, 13:1, NEMA 17
-    "cyclo-small", NEMA17, pin_count=14, pin_circle_r=34.0, pin_r=2.5,
-    eccentricity=1.2, disc_thickness=6.0,
-    output_pin_count=4, output_pin_r=4.0, output_pin_circle_r=20.0)
+    output_pin_count=6, output_pin_r=5.0, output_pin_circle_r=28.0)
 
 JOINT_GEARBOX = {"J1 yaw": CYCLO_YAW, "J2 shoulder pitch": CYCLO_BIG,
                  "J3 elbow pitch": CYCLO_MID, "J4 wrist pitch": CYCLO_SMALL}

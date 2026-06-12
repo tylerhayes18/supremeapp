@@ -1,8 +1,9 @@
 # SkyArm design
 
-A ceiling-mounted cartesian gantry carries a 5-DOF arm that drops down
-to reach anything within 5 ft (1524 mm) of the ceiling plane, anywhere
-in the room.
+A ceiling-mounted cartesian gantry carries a 5-DOF, **fully 3D-printed**
+arm that drops down to reach anything within 5 ft (1524 mm) of the
+ceiling plane, anywhere in the room, rated to hold **15 lb (6.8 kg) at
+full horizontal reach** with >=1.5x margin on every load path.
 
 ```
  ceiling ─┬──────────────────────────────┬─  2× 2040 X rails (joist-mounted)
@@ -54,23 +55,32 @@ of phase to cancel the eccentric shake. Reduction = pins − 1.
 corrected, holding torque is rated (not hoped for), and the resolution
 math is real:
 
-| joint | drive | output torque (65% eff) | worst load | margin | resolution |
+| joint | drive | output torque (65% eff) | worst load @ 15 lb | margin | resolution |
 |---|---|---|---|---|---|
-| J1 yaw | NEMA 23 × 15 | 21.4 Nm | 9.6 Nm (inertia) | 2.2× | 0.006° |
-| J2 shoulder | NEMA 24 × 29 | 75.4 Nm | 45.5 Nm | 1.7× | 0.003° |
-| J3 elbow | NEMA 23 × 20 | 28.6 Nm | 14.4 Nm | 2.0× | 0.0045° |
-| J4 wrist | NEMA 17 × 13 | 5.4 Nm | 1.9 Nm | 2.8× | 0.007° |
-| X / Y | NEMA 23, 20T GT2 | 690 / 345 N | 80 / 48 N | >7× | 0.010 mm |
+| J1 yaw | NEMA 24 × 18 | 46.8 Nm | 29.3 Nm (inertia) | 1.6× | 0.005° |
+| J2 shoulder | NEMA 34 × 35 | 273 Nm | 169 Nm | 1.6× | 0.0026° |
+| J3 elbow | NEMA 24 × 40 | 104 Nm | 65 Nm | 1.6× | 0.0022° |
+| J4 wrist | NEMA 23 × 15 | 21.4 Nm | 11.6 Nm | 1.8× | 0.006° |
+| X / Y | NEMA 23, 20T GT3 | 690 / 345 N | 118 / 80 N | >4× | 0.010 mm |
 
 Worst-case tip resolution (shoulder resolution × full reach): **0.08 mm**.
 Design rule enforced by tests: every joint ≥ 1.5× torque margin at
 1 kg payload, full horizontal extension.
 
-**Aluminium tube for the long members.** Nothing 660 mm long prints
-well or stays stiff; printed clevises clamp standard 2" (50.8 mm)
-aluminium tube instead — sized by the deflection analysis, which showed
-1" tube sagging 37 mm elastically at full reach.  Print the joints, buy
-the sticks.
+**Printed box-beam links (no metal tube).** The links are printed
+box sections — upper arm 120 x 80 mm with 6 mm walls, forearm
+90 x 60 x 5 — split into <=230 mm segments joined by bolted register
+flanges (8x M5 each).  A printed box this deep is *stiffer* than the 2"
+aluminium tube it replaced (2.7 mm tip sag at 15 lb vs 3.4 mm at 2 lb
+for the tube) because stiffness goes with depth cubed.  Segments print
+standing; root bending stress is 2.3 MPa against ~31 MPa of derated
+across-layer strength.  Beams taper to a narrow neck and stop 40 mm
+short of each joint axis so the links fold past each other (measured
+fold capacity 115 deg, spec'd at +-105).
+
+**Leadscrew gripper.** A NEMA 17 spins a LH/RH T8 leadscrew pulling
+both jaws together: self-locking, so holding 15 lb costs zero motor
+current, and ~150 N of grip without gearing.
 
 ## Kinematics (`skyarm/kinematics.py`)
 

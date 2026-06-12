@@ -9,31 +9,35 @@ Prices are rough 2026 USD.
 Closed-loop steppers everywhere: the encoder (4000 counts/rev) plus the
 zero-backlash printed cycloidal reducers is what makes the arm precise
 *and* means a stall is detected instead of silently losing position
-under load.
+under load.  Sized for **15 lb (6.8 kg) payload at full horizontal
+reach** with >=1.5x margin (validated in PyBullet — the arm holds 27 lb
+before the shoulder saturates).
 
 | # | item | qty | use | ~$ |
 |---|---|---|---|---|
-| 1 | NEMA 24 closed-loop stepper 4.0 Nm + driver (e.g. StepperOnline CL57T + 24E4.0) | 1 | J2 shoulder | 95 |
-| 2 | NEMA 23 closed-loop stepper 2.2 Nm + driver (CL57T + 23E2.2) | 5 | 2× X gantry, 1× Y gantry, J1 yaw, J3 elbow | 425 |
-| 3 | NEMA 17 closed-loop stepper 0.59 Nm + driver (CL42T + 17E) | 2 | J4 wrist pitch, J5 wrist roll | 120 |
-| 4 | DS3225 25 kg·cm digital servo | 1 | gripper | 15 |
+| 1 | NEMA 34 closed-loop stepper 12 Nm + driver (e.g. StepperOnline CL86T + 34E12.0) | 1 | J2 shoulder (273 Nm through 35:1) | 160 |
+| 2 | NEMA 24 closed-loop stepper 4.0 Nm + driver (CL57T + 24E4.0) | 2 | J1 yaw, J3 elbow | 190 |
+| 3 | NEMA 23 closed-loop stepper 2.2 Nm + driver (CL57T + 23E2.2) | 5 | 2× X, 1× Y gantry, J4 wrist, J5 roll | 425 |
+| 4 | NEMA 17 stepper + driver | 1 | leadscrew gripper (self-locking) | 25 |
+| 5 | T8 leadscrew, LH/RH combo, 150 mm + 2 nuts | 1 | gripper jaws | 12 |
 
 ## Motion — mechanical
 
 | # | item | qty | use | ~$ |
 |---|---|---|---|---|
-| 5 | 2040 V-slot extrusion, room length (~3.6 m) | 2 | ceiling X rails | 80 |
-| 6 | C-beam 4080 V-slot, room width (~3.0 m) | 1 | Y bridge beam (2060 deflected too much — see analysis.py) | 95 |
-| 7 | GT2 belt, 9 mm steel-core, 10 m | 1 | X + Y drives | 30 |
-| 8 | GT2 pulley 20T / 8 mm bore | 3 | gantry drives | 12 |
-| 9 | GT2 idler 9 mm, smooth | 6 | belt returns + tensioners | 12 |
-| 10 | Solid V wheel kits (wheel + 625ZZ + spacers + M5) | 14 | 8 on X trucks, 6 on Y carriage | 35 |
-| 11 | Aluminium tube 50.8 mm (2") OD × 2 mm wall × 1 m | 2 | upper arm + forearm (1" tube sagged 37 mm — see analysis.py) | 50 |
-| 12 | 6705ZZ thin bearing (25×32×4) | 6 | cyclo cam lobes (big/mid/yaw) | 18 |
-| 13 | 6803ZZ bearing (17×26×5) | 2 | cyclo-small cam lobes | 6 |
-| 14 | 6810ZZ bearing (50×65×7) | 6 | big/mid/yaw output: 2 per joint, spaced pair reacts the bending moment | 42 |
-| 15 | 6806ZZ bearing (30×42×7) | 4 | cyclo-small output (2) + wrist roll (2) | 16 |
-| 16 | GT2 belt closed loop 200 mm + 16T pulley 5 mm | 1 | wrist roll 5:1 stage | 8 |
+| 6 | 2040 V-slot extrusion, room length (~3.6 m) | 2 | ceiling X rails | 80 |
+| 7 | C-beam 4080 V-slot, room width (~3.0 m) | 1 | Y bridge beam (2060 deflected too much — see analysis.py) | 95 |
+| 8 | GT3 belt, 15 mm steel-core, 10 m | 1 | X + Y drives (9 mm GT2 failed the 15 lb margin) | 45 |
+| 9 | GT3 pulley 20T / 8 mm bore | 3 | gantry drives | 15 |
+| 10 | GT3 idler 15 mm, smooth | 6 | belt returns + tensioners | 15 |
+| 11 | Xtreme solid V wheel kits (620 N rated) | 8 | X trucks (regular wheels failed the moment check) | 30 |
+| 12 | MGN15 rail 400 mm + 2× MGN15H blocks | 1 | Y carriage (V wheels failed the 15 lb overturning moment) | 45 |
+| 13 | 6905ZZ bearing (25×42×9) | 2 | cyclo-big cam lobes | 8 |
+| 14 | 6705ZZ thin bearing (25×32×4) | 6 | mid/yaw/small cam lobes | 18 |
+| 15 | 6815ZZ bearing (75×95×10) | 2 | shoulder output, spaced pair reacts 169 Nm | 24 |
+| 16 | 6810ZZ bearing (50×65×7) | 4 | mid/yaw output pairs | 28 |
+| 17 | 6806ZZ bearing (30×42×7) | 4 | wrist output pair + roll | 16 |
+| 18 | GT3 belt closed loop 300 mm + 16T pulley 8 mm | 1 | wrist roll 5:1 stage | 10 |
 
 ## Electronics
 

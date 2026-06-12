@@ -42,24 +42,26 @@ Per gearbox: `*_housing`, 2× `*_disc`, `*_cam`, `*_output`, `*_cover`.
    The two X motors are wired as one axis in Klipper (`stepper_x` +
    `stepper_x1`).
 
-## 3. The arm
+## 3. The arm (fully printed links)
 
 1. Bolt the **yaw** gearbox housing to the carriage underside (6× M5);
-   its output flange carries the shoulder bracket.
-2. Bolt the **shoulder** (big) gearbox to the yaw output via
-   `shoulder_clevis` pair; clamp the 660 mm upper-arm tube.
-3. `elbow_clevis` clamps the other end of the tube and carries the
-   **elbow** (mid) gearbox; `forearm_clevis` on its output clamps the
-   500 mm forearm tube.
-4. `wrist_bracket` clamps the forearm end and carries the **small**
-   gearbox; `roll_housing` bolts to its output with the roll NEMA 17
-   and 5:1 GT2 belt to `roll_pulley`.
-5. `gripper_base` bolts to the roll pulley flange; servo into its
-   pocket, fingers on M5 pivots with their gear segments meshed, servo
-   horn linked to the driven finger. Glue TPU pads to the finger faces.
-6. Route wiring along the tubes (spiral wrap), into the drag chain at
-   the carriage, across the bridge, and along one X rail to the
-   controller box.
+   its output carries the shoulder column.
+2. Bolt the **shoulder** (big, NEMA 34) gearbox into the column band;
+   `upper_root` bolts to its output journal (6× M5).
+3. Stack `upper_root` + 2× `upper_mid` + `upper_tip` with the bolted
+   register flanges (8× M5 each, thread-locked).  The `upper_tip`
+   motor plate carries the **elbow** (NEMA 24, 40:1) gearbox.
+4. `forearm_root` bolts to the elbow output; add `forearm_mid` and
+   `forearm_tip`, which carries the **wrist** (NEMA 23, 15:1) gearbox.
+5. `roll_housing` bolts to the wrist output with the roll NEMA 23 and
+   5:1 GT3 belt to `roll_pulley`.
+6. `gripper_body` bolts to the roll pulley flange.  Slide both jaws
+   onto the printed rails, thread the LH/RH T8 leadscrew through both
+   nut pockets, couple the NEMA 17.  The screw is self-locking — the
+   grip holds 15 lb with the motor unpowered.  Glue TPU pads on.
+7. Route wiring inside the hollow beams (that's what the box section
+   is for), into the drag chain at the carriage, across the bridge,
+   and along one X rail to the controller box.
 
 ## 4. Electronics + software
 

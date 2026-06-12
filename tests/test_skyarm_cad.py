@@ -56,16 +56,23 @@ class TestPrintedParts(unittest.TestCase):
             check_part(mesh, name, spec.PRINT_VOLUME_MM)  # raises on failure
             self.assertGreater(mesh.volume, 1000.0, name)  # > 1 cm3 of plastic
 
-    def test_structural_brackets_watertight(self):
+    def test_structural_parts_watertight(self):
         from skyarm.cad import parts
         from skyarm.cad.primitives import check_part
         for fn in (parts.ceiling_bracket, parts.x_truck, parts.y_carriage,
-                   parts.shoulder_clevis, parts.gripper_base):
+                   parts.upper_root, parts.upper_mid, parts.upper_tip,
+                   parts.forearm_root, parts.forearm_tip,
+                   parts.gripper_body):
             check_part(fn(), fn.__name__, spec.PRINT_VOLUME_MM)
 
-    def test_mirrored_finger_is_valid_solid(self):
+    def test_link_segments_sum_to_link_lengths(self):
         from skyarm.cad import parts
-        m = parts.gripper_finger(mirrored=True)
+        self.assertAlmostEqual(sum(parts.UPPER_SEGS), spec.UPPER_ARM_MM)
+        self.assertAlmostEqual(sum(parts.FOREARM_SEGS), spec.FOREARM_MM)
+
+    def test_mirrored_jaw_is_valid_solid(self):
+        from skyarm.cad import parts
+        m = parts.gripper_jaw(mirrored=True)
         self.assertTrue(m.is_watertight)
         self.assertGreater(m.volume, 0)
 

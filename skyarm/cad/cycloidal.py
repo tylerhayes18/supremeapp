@@ -33,21 +33,29 @@ from . import primitives as P
 CLEAR = 0.25          # printed running clearance
 DISC_GAP = 0.4        # axial gap around discs
 
-# (cam_lobe_od = bearing id, disc_bore = bearing od) per gearbox size
+# (cam_lobe_od = bearing id, disc_bore = bearing od) per gearbox size,
+# plus the output bearing pair and the printed spacer between them —
+# wider spacing where the joint bending moment is larger.
 BEARINGS = {
-    "cyclo-big": dict(cam_od=25.0, disc_bore=32.0, out_id=50.0, out_od=65.0, out_w=7.0),
-    "cyclo-mid": dict(cam_od=25.0, disc_bore=32.0, out_id=50.0, out_od=65.0, out_w=7.0),
-    "cyclo-yaw": dict(cam_od=25.0, disc_bore=32.0, out_id=50.0, out_od=65.0, out_w=7.0),
-    "cyclo-small": dict(cam_od=17.0, disc_bore=26.0, out_id=30.0, out_od=42.0, out_w=7.0),
+    "cyclo-big": dict(cam_od=25.0, disc_bore=42.0,      # 6905ZZ cams
+                      out_id=75.0, out_od=95.0, out_w=10.0,  # 2x 6815ZZ
+                      spacing=40.0),
+    "cyclo-mid": dict(cam_od=25.0, disc_bore=32.0,      # 6705ZZ cams
+                      out_id=50.0, out_od=65.0, out_w=7.0,   # 2x 6810ZZ
+                      spacing=14.0),
+    "cyclo-yaw": dict(cam_od=25.0, disc_bore=32.0,
+                      out_id=50.0, out_od=65.0, out_w=7.0,
+                      spacing=14.0),
+    "cyclo-small": dict(cam_od=25.0, disc_bore=32.0,
+                        out_id=30.0, out_od=42.0, out_w=7.0,  # 2x 6806ZZ
+                        spacing=10.0),
 }
 
-NEMA_OF = {"cyclo-big": 24, "cyclo-mid": 23, "cyclo-yaw": 23, "cyclo-small": 17}
+NEMA_OF = {"cyclo-big": 34, "cyclo-mid": 24, "cyclo-yaw": 24, "cyclo-small": 23}
 
 
 FLANGE_T = 7.0            # housing motor flange thickness
 HEAD_T = 6.0              # output flange pin-head disc thickness
-JOURNAL_H = 26.6          # output journal: spans both bearings + spacer
-BRG_SPACING = 10.0        # integral cover ledge between the two bearings
 
 
 def ring_h(spec: CycloSpec) -> float:
@@ -55,10 +63,21 @@ def ring_h(spec: CycloSpec) -> float:
     return 2 * spec.disc_thickness + 1.2 + HEAD_T + 0.8
 
 
+def cover_t(spec: CycloSpec) -> float:
+    """Cover thickness: two output bearings + the integral spacer ledge."""
+    b = BEARINGS[spec.name]
+    return 2 * b["out_w"] + b["spacing"]
+
+
+def journal_h(spec: CycloSpec) -> float:
+    """Output journal length: through both bearings, slightly proud."""
+    return cover_t(spec) + 2.2
+
+
 def output_face_z(spec: CycloSpec) -> float:
     """Distance from the housing's motor-flange face to the outer face of
-    the assembled output flange — the plane that clevises bolt against."""
-    return 40.8 + 2 * spec.disc_thickness
+    the assembled output flange — the plane links bolt against."""
+    return 16.4 + 2 * spec.disc_thickness + cover_t(spec)
 
 
 def cover_z(spec: CycloSpec) -> float:
@@ -130,7 +149,7 @@ def cam(spec: CycloSpec) -> trimesh.Trimesh:
     lobe2 = P.cyl(b["cam_od"], t + DISC_GAP, (-E, 0, hub_h + t + DISC_GAP))
     total_h = hub_h + 2 * (t + DISC_GAP)
     bore = P.dshaft_cutter(nema["shaft_d"] + 0.2,
-                           0.5 if nema["shaft_d"] <= 5 else 1.0,
+                           P.shaft_flat_depth(nema["shaft_d"]),
                            total_h + 2, (0, 0, -1))
     body = P.union(hub, lobe1, lobe2)
     # M3 grub screw into the flat, through the hub
@@ -147,16 +166,17 @@ def output_flange(spec: CycloSpec) -> trimesh.Trimesh:
     together.  Print journal-down, pins-up."""
     b = BEARINGS[spec.name]
     pin_len = 2 * spec.disc_thickness + 2 * DISC_GAP
-    journal = P.cyl(b["out_id"] - 0.3, JOURNAL_H)
-    head = P.cyl(head_d(spec), HEAD_T, (0, 0, JOURNAL_H))
+    jh = journal_h(spec)
+    journal = P.cyl(b["out_id"] - 0.3, jh)
+    head = P.cyl(head_d(spec), HEAD_T, (0, 0, jh))
     pins = [P.cyl(2 * spec.output_pin_r, pin_len,
-                  (cx, cy, JOURNAL_H + HEAD_T), seg=48)
+                  (cx, cy, jh + HEAD_T), seg=48)
             for cx, cy in P.bolt_circle(spec.output_pin_count,
                                         spec.output_pin_circle_r)]
     body = P.union(journal, head, *pins)
-    # output bolt pattern: 4x M5 through journal + head (clevis side)
-    cutters = P.holes(4.6, JOURNAL_H + HEAD_T,
-                      P.bolt_circle(4, spec.output_pin_circle_r * 0.55, 45))
+    # output bolt pattern: 6x M5 through journal + head (link side)
+    cutters = P.holes(5.2, jh + HEAD_T,
+                      P.bolt_circle(6, spec.output_pin_circle_r * 0.55, 45))
     return P.difference(body, *cutters)
 
 
@@ -165,7 +185,7 @@ def cover(spec: CycloSpec) -> trimesh.Trimesh:
     ledge between them; bolts to the housing ring."""
     b = BEARINGS[spec.name]
     od = spec.housing_od
-    t = 2 * b["out_w"] + BRG_SPACING                  # 24.4 with 7 mm brgs
+    t = cover_t(spec)
     cavity_r = spec.pin_circle_r + spec.pin_r * 0.5
     cover_r = (cavity_r + od / 2) / 2 + spec.pin_r * 0.25
 
