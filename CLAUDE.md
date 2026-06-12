@@ -18,17 +18,19 @@ Entry points: `python -m handsense` (hand gestures), `python -m handsense.body`
 
 ```
 handsense/
-  main.py            capture loop, key handling, mode switching, top HUD bar
-  detector.py        MediaPipe Tasks HandLandmarker wrapper -> HandObservation
-  gestures.py        pure-Python gesture classification + GestureStabilizer
-  modes.py           CommandMode, DrawMode, RPSMode, DialMode (ALL_MODES registry)
-  hud.py             drawing helpers: panels, outlined text, banners, EventLog, FPS
-  pose_detector.py   MediaPipe PoseLandmarker wrapper -> PoseObservation (33 body landmarks)
-  avatar.py          OpenGL 3D humanoid renderer (pygame window, spheres + cylinders)
-  body.py            body tracking entry point (camera + 3D avatar side by side)
+  main.py               capture loop, key handling, mode switching, top HUD bar
+  detector.py            MediaPipe Tasks HandLandmarker wrapper -> HandObservation
+  gestures.py            pure-Python gesture classification + GestureStabilizer
+  modes.py               CommandMode, DrawMode, RPSMode, DialMode (ALL_MODES registry)
+  hud.py                 drawing helpers: panels, outlined text, banners, EventLog, FPS
+  holistic_detector.py   MediaPipe HolisticLandmarker -> body(33)+face(478)+hands(21×2)
+  pose_detector.py       MediaPipe PoseLandmarker wrapper (body-only, legacy)
+  mesh_loader.py         GLB/VRM model loader, body-part segmentation, OpenGL VBOs
+  avatar.py              OpenGL 3D avatar renderer (mesh or geometric, face, fingers)
+  body.py                body tracking entry point (camera + 3D avatar)
 tests/
-  test_gestures.py   synthetic-landmark tests for classifier + stabilizer
-  test_pose.py       coordinate conversion and body-structure validation tests
+  test_gestures.py       synthetic-landmark tests for classifier + stabilizer
+  test_pose.py           coordinate conversion, body structure, face orientation tests
 ```
 
 ## Key conventions

@@ -1,15 +1,16 @@
-"""Body tracking entry point: full-body pose mirrored onto a 3D avatar.
+"""Body tracking entry point: full-body + face + hands mirrored onto a 3D avatar.
 
 Usage:
     python -m handsense.body [--camera N] [--width W] [--height H]
 
-Opens two views: a camera feed (picture-in-picture in the corner) and a 3D
-OpenGL window showing a geometric humanoid that mirrors your movements in
-real time.
+Opens a 3D OpenGL window showing a humanoid avatar that mirrors your body,
+face orientation, and finger movements in real time. Camera feed appears as
+a picture-in-picture with the detected skeleton overlaid.
 
 Controls:
     arrow keys   orbit the 3D camera around the avatar
     +/-          zoom in/out
+    r            reset camera angle
     q / Esc      quit
 """
 
@@ -22,20 +23,24 @@ import time
 import cv2
 
 from .avatar import AvatarRenderer
-from .pose_detector import PoseDetector
+from .holistic_detector import HolisticDetector
 
 
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="handsense.body",
-        description="Full-body tracking with a real-time 3D avatar.",
+        description="Full-body + face + hand tracking with a real-time 3D avatar.",
     )
     parser.add_argument("--camera", type=int, default=0, help="camera index (default 0)")
     parser.add_argument("--width", type=int, default=1280, help="capture width")
     parser.add_argument("--height", type=int, default=720, help="capture height")
     parser.add_argument("--no-mirror", action="store_true", help="disable selfie-style mirror")
-    parser.add_argument("--avatar-size", type=int, default=800,
-                        help="3D window size in pixels (default 800)")
+    parser.add_argument("--avatar-size", type=int, default=900,
+                        help="3D window size in pixels (default 900)")
+    parser.add_argument("--model", type=str, default=None,
+                        help="path to a .glb/.vrm humanoid model (downloads a default if omitted)")
+    parser.add_argument("--no-mesh", action="store_true",
+                        help="use geometric avatar instead of a 3D mesh")
     return parser.parse_args(argv)
 
 
@@ -48,11 +53,14 @@ def main(argv=None) -> int:
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
 
-    detector = PoseDetector()
-    avatar = AvatarRenderer(width=args.avatar_size, height=args.avatar_size)
+    detector = HolisticDetector()
+    avatar = AvatarRenderer(width=args.avatar_size, height=args.avatar_size,
+                            model_path=args.model, use_mesh=not args.no_mesh)
     mirror = not args.no_mirror
 
-    print("Body tracking running. Arrow keys orbit camera, +/- zoom, q to quit.")
+    print("Body tracking running.")
+    print("  arrow keys = orbit | +/- = zoom | r = reset view | q = quit")
+    print("  Tracking: body (33), face (478), hands (21 each)")
 
     try:
         while True:
@@ -63,19 +71,15 @@ def main(argv=None) -> int:
             if mirror:
                 frame = cv2.flip(frame, 1)
 
-            pose = detector.process(frame)
+            obs = detector.process(frame)
 
-            # Draw pose skeleton on the camera frame (for the PIP).
-            if pose is not None:
-                detector.draw_skeleton(frame, pose)
+            if obs is not None:
+                detector.draw_overlay(frame, obs)
 
             if not avatar.handle_events():
                 break
 
-            avatar.render(
-                world_landmarks=pose.world_landmarks if pose else None,
-                camera_frame=frame,
-            )
+            avatar.render(obs=obs, camera_frame=frame)
     finally:
         detector.close()
         cap.release()
