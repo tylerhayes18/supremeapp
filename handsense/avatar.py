@@ -439,8 +439,11 @@ class AvatarRenderer:
                               self._mesh.hip_y,
                               self._mesh.model_center[2]])
 
+        ground_y = -1.05
+        translate_y = ground_y + scale * (self._mesh.hip_y - float(self._mesh.bounds_min[1]))
+
         glPushMatrix()
-        glTranslatef(*hip_center)
+        glTranslatef(float(hip_center[0]), translate_y, float(hip_center[2]))
         glScalef(scale, scale, scale)
         glTranslatef(-model_hip[0], -model_hip[1], -model_hip[2])
 
@@ -451,7 +454,6 @@ class AvatarRenderer:
         glPopMatrix()
 
         gl_lm_list = [tuple(gl_lm[i]) for i in range(33)]
-        self._draw_head_features(gl_lm_list, obs)
         if obs.has_left_hand or obs.has_right_hand:
             self._draw_hands(obs, gl_lm_list)
 

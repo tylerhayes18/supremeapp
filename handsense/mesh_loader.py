@@ -375,6 +375,13 @@ class AvatarMesh:
                 offsets[b] = track_a - self._rest_anchors[b]
                 continue
             track_dir = track_d / track_len
+            if b <= 2:
+                track_dir = 0.6 * self._rest_dirs[b] + 0.4 * track_dir
+                dn = np.linalg.norm(track_dir)
+                if dn > 1e-6:
+                    track_dir = track_dir / dn
+                else:
+                    track_dir = self._rest_dirs[b].copy()
             R = _rotation_between(self._rest_dirs[b], track_dir)
             Rs[b] = R
             offsets[b] = track_a - R @ self._rest_anchors[b]
@@ -436,6 +443,14 @@ class AvatarMesh:
                 colors = np.hstack([colors, alpha])
             if np.allclose(colors[:, :3], colors[0, :3], atol=0.01):
                 return None
+            r, g, b_ch = colors[:, 0], colors[:, 1], colors[:, 2]
+            max_c = np.maximum(np.maximum(r, g), b_ch)
+            min_c = np.minimum(np.minimum(r, g), b_ch)
+            extreme = ((max_c - min_c) > 0.5) & (max_c > 0.6)
+            n_extreme = int(np.sum(extreme))
+            if 0 < n_extreme < int(0.05 * len(colors)):
+                median_color = np.median(colors[~extreme, :3], axis=0)
+                colors[extreme, :3] = median_color
             return colors
         except Exception:
             pass
