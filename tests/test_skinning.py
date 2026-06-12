@@ -190,5 +190,74 @@ class TestPointSegmentDist(unittest.TestCase):
         self.assertAlmostEqual(d[0], 1.0, places=5)
 
 
+class TestStabilizeLandmarks(unittest.TestCase):
+    """Test the landmark stabilization logic (visibility + temporal smoothing)."""
+
+    def _make_stabilizer(self):
+        """Create a minimal mock that has the _stabilize_landmarks method."""
+        from handsense.avatar import AvatarRenderer
+        # We can't create a full renderer (needs OpenGL), so test the logic directly.
+        class FakeStabilizer:
+            def __init__(self):
+                self._smoothed_gl = None
+        s = FakeStabilizer()
+        # Bind the method manually.
+        import types
+        s._stabilize_landmarks = types.MethodType(
+            AvatarRenderer._stabilize_landmarks, s)
+        return s
+
+    def test_first_frame_passthrough(self):
+        s = self._make_stabilizer()
+        lm = np.random.randn(33, 3).astype(np.float32)
+        vis = [1.0] * 33
+        result = s._stabilize_landmarks(lm, vis)
+        np.testing.assert_array_equal(result, lm)
+
+    def test_invisible_landmarks_freeze(self):
+        s = self._make_stabilizer()
+        lm1 = np.zeros((33, 3), dtype=np.float32)
+        s._stabilize_landmarks(lm1, [1.0] * 33)
+        lm2 = np.ones((33, 3), dtype=np.float32)
+        vis2 = [0.0] * 33  # all invisible
+        result = s._stabilize_landmarks(lm2, vis2)
+        # Should stay at lm1 (frozen).
+        np.testing.assert_array_equal(result, lm1)
+
+    def test_visible_landmarks_track(self):
+        s = self._make_stabilizer()
+        lm1 = np.zeros((33, 3), dtype=np.float32)
+        s._stabilize_landmarks(lm1, [1.0] * 33)
+        lm2 = np.full((33, 3), 0.01, dtype=np.float32)
+        vis2 = [1.0] * 33  # fully visible
+        result = s._stabilize_landmarks(lm2, vis2)
+        # Should move toward lm2 (alpha=0.7 for high vis).
+        expected = 0.7 * lm2 + 0.3 * lm1
+        np.testing.assert_allclose(result, expected, atol=1e-5)
+
+    def test_mixed_visibility(self):
+        s = self._make_stabilizer()
+        lm1 = np.zeros((33, 3), dtype=np.float32)
+        s._stabilize_landmarks(lm1, [1.0] * 33)
+        lm2 = np.ones((33, 3), dtype=np.float32) * 0.05
+        vis2 = [0.0] * 33
+        vis2[0] = 1.0  # only landmark 0 visible
+        result = s._stabilize_landmarks(lm2, vis2)
+        # Landmark 0 should move, others should stay frozen.
+        self.assertGreater(abs(float(result[0, 0])), 0.01)
+        np.testing.assert_array_equal(result[1:], lm1[1:])
+
+    def test_large_jump_dampened(self):
+        s = self._make_stabilizer()
+        lm1 = np.zeros((33, 3), dtype=np.float32)
+        s._stabilize_landmarks(lm1, [1.0] * 33)
+        lm2 = np.zeros((33, 3), dtype=np.float32)
+        lm2[0] = [1.0, 0, 0]  # 1 meter jump
+        vis2 = [1.0] * 33
+        result = s._stabilize_landmarks(lm2, vis2)
+        # Jump is > 0.25, so alpha capped at 0.1.
+        self.assertLess(float(result[0, 0]), 0.15)
+
+
 if __name__ == "__main__":
     unittest.main()

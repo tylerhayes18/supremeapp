@@ -243,6 +243,10 @@ class AvatarRenderer:
         self._CALIBRATION_HOLD = 2.0   # seconds to hold T-pose
         self._CALIBRATION_FRAMES = 30  # frames to average
 
+        # Landmark stabilization state.
+        self._smoothed_gl: np.ndarray | None = None
+        self._last_transform: tuple[np.ndarray, float] | None = None
+
         self._setup_gl()
 
     def _setup_gl(self) -> None:
@@ -336,6 +340,56 @@ class AvatarRenderer:
         tracked_model = (gl_landmarks - hip_center) / scale + model_hip
         return tracked_model, hip_center, scale
 
+    def _stabilize_landmarks(self, gl_lm: np.ndarray,
+                             visibility: list[float]) -> np.ndarray:
+        """Smooth landmarks and hold invisible ones at their last good position."""
+        vis = np.array(visibility[:33], dtype=np.float32)
+
+        if self._smoothed_gl is None:
+            self._smoothed_gl = gl_lm.copy()
+            return gl_lm.copy()
+
+        result = gl_lm.copy()
+        for i in range(33):
+            prev = self._smoothed_gl[i]
+
+            if vis[i] < 0.1:
+                result[i] = prev
+                continue
+
+            if vis[i] > 0.65:
+                alpha = 0.7
+            elif vis[i] > 0.2:
+                alpha = 0.1 + 0.6 * (vis[i] - 0.2) / 0.45
+            else:
+                alpha = 0.05
+
+            jump = float(np.linalg.norm(result[i] - prev))
+            if jump > 0.25:
+                alpha = min(alpha, 0.1)
+
+            result[i] = alpha * result[i] + (1 - alpha) * prev
+
+        self._smoothed_gl = result.copy()
+        return result
+
+    def _render_mesh(self, hip_center: np.ndarray, scale: float) -> None:
+        """Apply grounding transform and draw the skinned mesh."""
+        model_hip = np.array([self._mesh.model_center[0],
+                              self._mesh.hip_y,
+                              self._mesh.model_center[2]])
+        ground_y = -1.05
+        translate_y = ground_y + scale * (self._mesh.hip_y
+                                          - float(self._mesh.bounds_min[1]))
+        glPushMatrix()
+        glTranslatef(float(hip_center[0]), translate_y, float(hip_center[2]))
+        glScalef(scale, scale, scale)
+        glTranslatef(-model_hip[0], -model_hip[1], -model_hip[2])
+        if self._mesh._draw_colors is None:
+            glColor4f(0.65, 0.65, 0.70, 1.0)
+        self._mesh.draw()
+        glPopMatrix()
+
     def _try_calibrate(self, obs: HolisticObservation) -> None:
         """Collect T-pose frames and calibrate when enough are gathered."""
         import time
@@ -343,10 +397,18 @@ class AvatarRenderer:
 
         gl_lm = np.array([_mp_to_gl(*pt) for pt in obs.pose_world], dtype=np.float32)
 
+        vis = obs.pose_visibility
+        key_vis = min(vis[LEFT_SHOULDER], vis[RIGHT_SHOULDER],
+                      vis[LEFT_HIP], vis[RIGHT_HIP],
+                      vis[LEFT_WRIST], vis[RIGHT_WRIST])
+        if key_vis < 0.5:
+            self._calibration_frames.clear()
+            self._calibration_countdown = 0.0
+            return
+
         if is_tpose(gl_lm):
             if self._calibration_countdown == 0:
                 self._calibration_countdown = time.time()
-            elapsed = time.time() - self._calibration_countdown
             self._calibration_frames.append(gl_lm)
 
             if len(self._calibration_frames) >= self._CALIBRATION_FRAMES:
@@ -354,6 +416,7 @@ class AvatarRenderer:
                 _, hip_center, scale = self._gl_to_model(avg_lm)
                 self._mesh.calibrate(avg_lm, hip_center, scale)
                 self._calibration_done = True
+                self._smoothed_gl = avg_lm.copy()
                 self._calibration_frames.clear()
                 print("calibration complete — tracking active")
         else:
@@ -431,31 +494,22 @@ class AvatarRenderer:
     def _draw_mesh_body(self, obs: HolisticObservation) -> None:
         """Render the articulated mesh via linear blend skinning."""
         gl_lm = np.array([_mp_to_gl(*pt) for pt in obs.pose_world], dtype=np.float32)
+        gl_lm = self._stabilize_landmarks(gl_lm, obs.pose_visibility)
+
         tracked_model, hip_center, scale = self._gl_to_model(gl_lm)
-
         self._mesh.skin(tracked_model)
+        self._last_transform = (hip_center.copy(), scale)
 
-        model_hip = np.array([self._mesh.model_center[0],
-                              self._mesh.hip_y,
-                              self._mesh.model_center[2]])
-
-        ground_y = -1.05
-        translate_y = ground_y + scale * (self._mesh.hip_y - float(self._mesh.bounds_min[1]))
-
-        glPushMatrix()
-        glTranslatef(float(hip_center[0]), translate_y, float(hip_center[2]))
-        glScalef(scale, scale, scale)
-        glTranslatef(-model_hip[0], -model_hip[1], -model_hip[2])
-
-        if self._mesh._draw_colors is None:
-            glColor4f(0.65, 0.65, 0.70, 1.0)
-        self._mesh.draw()
-
-        glPopMatrix()
+        self._render_mesh(hip_center, scale)
 
         gl_lm_list = [tuple(gl_lm[i]) for i in range(33)]
         if obs.has_left_hand or obs.has_right_hand:
             self._draw_hands(obs, gl_lm_list)
+
+    def _draw_frozen_mesh(self) -> None:
+        """Draw the mesh in its last skinned pose (when tracking is lost)."""
+        hip_center, scale = self._last_transform
+        self._render_mesh(hip_center, scale)
 
     # ── Geometric body rendering (fallback) ────────────────────────────
 
@@ -775,6 +829,9 @@ class AvatarRenderer:
                 self._draw_mesh_body(obs)
             else:
                 self._draw_geometric_body(obs)
+        elif (self._mesh is not None and self._calibration_done
+              and self._last_transform is not None):
+            self._draw_frozen_mesh()
 
         if camera_frame is not None:
             self._draw_pip(camera_frame)

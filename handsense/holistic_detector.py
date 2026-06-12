@@ -108,6 +108,7 @@ class FaceOrientation:
 class HolisticObservation:
     pose_image: list[tuple[float, float, float]]     # 33 normalized
     pose_world: list[tuple[float, float, float]]      # 33 meters, hip-centered
+    pose_visibility: list[float] = field(default_factory=lambda: [1.0] * 33)
     face_landmarks: list[tuple[float, float, float]] | None = None   # 478 normalized
     left_hand: list[tuple[float, float, float]] | None = None        # 21 normalized
     right_hand: list[tuple[float, float, float]] | None = None       # 21 normalized
@@ -209,6 +210,11 @@ class HolisticDetector:
 
         pose_img = [(p.x, p.y, p.z) for p in result.pose_landmarks]
         pose_world = [(p.x, p.y, p.z) for p in result.pose_world_landmarks]
+        pose_vis = []
+        for p in result.pose_landmarks:
+            v = getattr(p, 'visibility', None)
+            pose_vis.append(float(v) if v is not None else 1.0)
+
 
         face_lm = None
         face_orient = FaceOrientation()
@@ -224,6 +230,7 @@ class HolisticDetector:
         return HolisticObservation(
             pose_image=pose_img,
             pose_world=pose_world,
+            pose_visibility=pose_vis,
             face_landmarks=face_lm,
             left_hand=_hand_lms(result.left_hand_landmarks),
             right_hand=_hand_lms(result.right_hand_landmarks),
