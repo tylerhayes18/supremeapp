@@ -19,14 +19,17 @@ tested entirely from this package.
 ## Quick start
 
 ```bash
-pip install numpy trimesh manifold3d shapely pillow pygame PyOpenGL
+pip install numpy trimesh manifold3d shapely pillow pygame PyOpenGL pybullet
 
 python -m skyarm.spec                 # torque/resolution design report
+python -m skyarm.analysis             # structural checks w/ safety factors
+python -m skyarm.sim.dynamics         # PyBullet torque-limited physics tests
+python -m skyarm.interference         # self-collision sweep (real meshes)
 python -m skyarm.cad.generate         # regenerate all STLs + manifest
 python -m skyarm.sim                  # interactive 3D test environment
 python -m skyarm.sim --headless       # run the demo mission, print report
-python -m skyarm.sim --snapshot f.png # render mission keyframes
-python -m skyarm.render               # part contact sheet + exploded gearbox
+python -m skyarm.sim --snapshot f.png # render mission keyframes (--real for CAD meshes)
+python -m skyarm.assembly             # assembled + exploded machine renders
 python -m unittest discover -s tests -p "test_skyarm*" -v
 ```
 

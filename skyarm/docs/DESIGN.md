@@ -59,7 +59,7 @@ math is real:
 | J1 yaw | NEMA 23 × 15 | 21.4 Nm | 9.6 Nm (inertia) | 2.2× | 0.006° |
 | J2 shoulder | NEMA 24 × 29 | 75.4 Nm | 45.5 Nm | 1.7× | 0.003° |
 | J3 elbow | NEMA 23 × 20 | 28.6 Nm | 14.4 Nm | 2.0× | 0.0045° |
-| J4 wrist | NEMA 17 × 11 | 4.5 Nm | 1.9 Nm | 2.4× | 0.008° |
+| J4 wrist | NEMA 17 × 13 | 5.4 Nm | 1.9 Nm | 2.8× | 0.007° |
 | X / Y | NEMA 23, 20T GT2 | 690 / 345 N | 80 / 48 N | >7× | 0.010 mm |
 
 Worst-case tip resolution (shoulder resolution × full reach): **0.08 mm**.
@@ -67,8 +67,10 @@ Design rule enforced by tests: every joint ≥ 1.5× torque margin at
 1 kg payload, full horizontal extension.
 
 **Aluminium tube for the long members.** Nothing 660 mm long prints
-well or stays stiff; printed clevises clamp standard 1" tube instead.
-Print the joints, buy the sticks.
+well or stays stiff; printed clevises clamp standard 2" (50.8 mm)
+aluminium tube instead — sized by the deflection analysis, which showed
+1" tube sagging 37 mm elastically at full reach.  Print the joints, buy
+the sticks.
 
 ## Kinematics (`skyarm/kinematics.py`)
 
@@ -87,6 +89,38 @@ down).
 - Runtime checks fault the machine if any joint crosses the floor.
 - Hardware: NC e-stop in the 24 V rail, endstop homing on every axis,
   Klipper's stall detection on the closed-loop drivers.
+
+## Mechanical validation (and what it caught)
+
+Four validation layers, all runnable and all enforced by tests:
+
+1. **Static torque budget** — `python -m skyarm.spec`
+2. **Structural analysis** — `python -m skyarm.analysis`: closed-form
+   beam bending, tube stress/deflection, printed pin shear/bending,
+   bearing loads, V-wheel loads, belt tension, ceiling anchors, each
+   with an asserted safety factor.
+3. **Rigid-body dynamics** — `python -m skyarm.sim.dynamics`: the
+   machine as a URDF in PyBullet with real masses, gravity, and motors
+   torque-clamped to gearbox capacity.  Holds 1 kg horizontal with
+   zero droop (steady shoulder torque 47.3 / 75.4 Nm, agreeing with
+   the static budget within 2%), tracks the demo mission to 0.5 deg /
+   1.3 mm, and measures the true payload ceiling: the shoulder
+   saturates and the arm collapses between 3.0 and 3.5 kg.
+4. **Self-interference sweep** — `python -m skyarm.interference`:
+   boolean mesh intersections of the real CAD assembly across joint
+   travel.
+
+Design errors these layers caught and the fixes now in the spec/CAD:
+
+| found by | problem | fix |
+|---|---|---|
+| analysis | 37 mm tip sag with 1" tube | 50.8 mm x 2 mm tube (3.4 mm sag) |
+| analysis | output pins SF 1.1 in bending | bigger pins (e.g. 14 mm on the shoulder), SF 3.2 |
+| analysis | single output bearing SF 1.04 vs moment | mushroom output flange, journal through 2 spaced bearings, SF 2.4 |
+| analysis | carriage wheel SF 1.8 | wheelbase 110 -> 150 mm, SF 2.2 |
+| analysis | 2060 bridge deflects several mm | C-beam 4080 bridge (1.3 mm) |
+| dynamics | wrist gearbox saturated during moves | 11:1 -> 13:1 |
+| interference | tubes collide folding past 105 deg | output clamps offset 30 mm past the joint, travel limits set to measured values (elbow ±105, wrist ±95) |
 
 ## Iterating
 

@@ -107,7 +107,6 @@ def _motor_block(nema_size, length):
 
 def _gearbox(out, label, cs, frame):
     t = cs.disc_thickness
-    ring_h = 2 * t + 1.2
     e = cs.eccentricity
     nema_size = NEMA_OF[cs.name]
     motor_len = {17: 48, 23: 81, 24: 100}[nema_size]
@@ -129,12 +128,13 @@ def _gearbox(out, label, cs, frame):
     output = _part(f"{cs.name}-output", lambda: cycloidal.output_flange(cs))
     output.apply_transform(trimesh.transformations.rotation_matrix(
         math.pi, (1, 0, 0)))                       # pins now point local -z
-    _place(out, f"{label}-output", output, frame,
-           (0, 0, 21.2 + 2 * t), C_OUTPUT, (0, 0, 175))
+    zo = cycloidal.output_face_z(cs)
+    _place(out, f"{label}-output", output, frame, (0, 0, zo),
+           C_OUTPUT, (0, 0, 185))
     _place(out, f"{label}-cover",
            _part(f"{cs.name}-cover", lambda: cycloidal.cover(cs)),
-           frame, (0, 0, 7 + ring_h), C_COVER, (0, 0, 230))
-    return 21.2 + 2 * t                            # output face local z
+           frame, (0, 0, cycloidal.cover_z(cs)), C_COVER, (0, 0, 245))
+    return zo                                      # output face local z
 
 
 # ---------------------------------------------------------------------------
@@ -198,8 +198,9 @@ def machine(pose: kin.Pose | None = None, include_gantry: bool = True) -> list:
         yc = _part("y_carriage", cad_parts.y_carriage)
         f = _basis((cx, cy, CEIL - 52), (0, 0, 1), (0, 1, 0))
         _place(out, "y-carriage", yc, f, (0, 0, 0), C_PRINT, (0, 0, -200))
+        half_span = spec.CARRIAGE_WHEEL_SPAN_MM / 2
         for sx in (-1, 1):
-            for dy in (-55, 0, 55):
+            for dy in (-half_span, 0, half_span):
                 w = _cyl(24.4, 11)
                 w.apply_translation((cx + sx * 42.2, cy + dy, CEIL - 40))
                 out.append(Placed("v-wheel", w, C_WHEEL,
@@ -221,8 +222,8 @@ def machine(pose: kin.Pose | None = None, include_gantry: bool = True) -> list:
     f_yaw = _basis((cx, cy, CEIL - 54), (0, 0, -1), (1, 0, 0))
     _gearbox(out, "yaw", spec.CYCLO_YAW, f_yaw)
 
-    # column: yaw output -> shoulder gearbox ring
-    col_top, col_bot = CEIL - 105.0, p_sh[2] + 52.0
+    # column: yaw output -> shoulder gearbox ring (strap-clamps the ring OD)
+    col_top, col_bot = CEIL - 118.0, p_sh[2] + 73.0
     m = _box((90, 90, col_top - col_bot))
     m.apply_translation(((p_sh + a * 55)[0], (p_sh + a * 55)[1],
                          (col_top + col_bot) / 2))
@@ -231,18 +232,24 @@ def machine(pose: kin.Pose | None = None, include_gantry: bool = True) -> list:
     # ---- arm joints -----------------------------------------------------
     def pitch_cluster(label, cs, joint, t_out, clevis_name, clevis_builder,
                       bracket=None, t_in=None):
-        # gearbox: output face toward the arm plane
-        f = _basis(joint + a * 68.7, -a, t_out)
+        # distance from arm plane to the gearbox motor face; puts the
+        # output clevis bore exactly on the joint axis / arm plane
+        # (clevis plate 8 mm + half the tube clamp block)
+        d_face = (cycloidal.output_face_z(cs) + 0.2 + 8.0
+                  + (spec.TUBE_OD_MM + 18.0) / 2)
+        f = _basis(joint + a * d_face, -a, t_out)
         zo = _gearbox(out, label, cs, f)
         clev = _part(clevis_name, clevis_builder)
         _place(out, f"{label}-clevis", clev, f, (0, 0, zo + 0.2),
                C_PRINT, (0, 0, 290))
         if bracket is not None:
+            # input bracket: plate against the motor face, standoff web
+            # drops its clamp onto the incoming tube 60 mm before the joint
             name, builder = bracket
             br = _part(name, builder)
-            fb = _basis(joint - 60.0 * t_in - a * 30.7, a, t_in)
+            fb = _basis(joint - 60.0 * t_in + a * d_face, -a, t_in)
             _place(out, f"{label}-bracket", br, fb, (0, 0, 0),
-                   C_PRINT, (0, 0, -120))
+                   C_PRINT, (0, 0, -160))
 
     pitch_cluster("shoulder", spec.CYCLO_BIG, p_sh, t_up,
                   "shoulder_clevis", cad_parts.shoulder_clevis)
@@ -253,9 +260,11 @@ def machine(pose: kin.Pose | None = None, include_gantry: bool = True) -> list:
                   "wrist_clevis", cad_parts.forearm_clevis,
                   bracket=("wrist_bracket", cad_parts.wrist_bracket), t_in=t_fo)
 
-    # tubes (stock aluminium)
-    for name, p0, p1 in (("upper-arm-tube", p_sh + t_up * 60, p_el - t_up * 60),
-                         ("forearm-tube", p_el + t_fo * 60, p_wr - t_fo * 60)):
+    # tubes (stock aluminium): start 10 mm past the proximal joint (the
+    # output clamp sits at +30) and stop 40 mm before the distal joint so
+    # the links clear each other when the joints fold
+    for name, p0, p1 in (("upper-arm-tube", p_sh + t_up * 10, p_el - t_up * 40),
+                         ("forearm-tube", p_el + t_fo * 10, p_wr - t_fo * 40)):
         seg = trimesh.creation.cylinder(radius=spec.TUBE_OD_MM / 2, height=1.0,
                                         sections=28, segment=(p0, p1))
         out.append(Placed(name, seg, C_ALU, np.array([0.0, 0, 0])))
@@ -271,11 +280,12 @@ def machine(pose: kin.Pose | None = None, include_gantry: bool = True) -> list:
     gb = _part("gripper_base", cad_parts.gripper_base)
     _place(out, "gripper-base", gb, f_roll, (0, 0, 27), C_GRIP, (0, 0, 260))
     servo = _box((40, 20, 38))
-    _place(out, "gripper-servo", servo, f_roll, (0, 10, 18), C_MOTOR,
+    servo.apply_translation((0, 0, 19))     # sit on the base plate
+    _place(out, "gripper-servo", servo, f_roll, (0, 10, 37.5), C_MOTOR,
            (0, 0, 225))
     for side, mirrored in ((-1, False), (1, True)):
         fi = _part(f"finger{side}", lambda m=mirrored: cad_parts.gripper_finger(m))
-        ff = _basis(p_wr + t_ti * 92.0 + a * (side * 15.0)
+        ff = _basis(p_wr + t_ti * 96.0 + a * (side * 15.0)
                     - np.cross(t_ti, a) * 18.0, -a, t_ti)
         rot = trimesh.transformations.rotation_matrix(
             math.radians(-10 * side), (0, 0, 1))

@@ -73,9 +73,12 @@ class TestInverse(unittest.TestCase):
             depth = rng.uniform(400, 1300)
             target = (gx + rad * math.cos(ang), gy + rad * math.sin(ang),
                       kin.SHOULDER_Z_MM - depth)
-            # with a vertical approach the wrist sits 164 mm above the tip
+            # with a vertical approach the wrist sits 164 mm above the tip;
+            # close-in targets need an elbow fold past the travel limit
             wrist_d = math.hypot(rad, depth - spec.WRIST_TO_TIP_MM)
             if wrist_d > 0.98 * (spec.UPPER_ARM_MM + spec.FOREARM_MM):
+                continue
+            if wrist_d < 740.0:    # |elbow| > ~105 deg
                 continue
             try:
                 pose = kin.inverse(target, psi_deg=0.0, gantry=(gx, gy))
@@ -85,7 +88,7 @@ class TestInverse(unittest.TestCase):
             tip = kin.forward(pose).tip
             for got, want in zip(tip, target):
                 self.assertAlmostEqual(got, want, delta=1e-6)
-        self.assertGreater(solved, 200)
+        self.assertGreater(solved, 120)
 
     def test_vertical_approach_keeps_gripper_down(self):
         target = (1200, 900, 1250)
@@ -100,7 +103,7 @@ class TestInverse(unittest.TestCase):
 
     def test_gantry_clamps_and_arm_leans_for_outside_targets(self):
         # target beyond X travel: carriage parks at edge, arm leans out
-        target = (kin.X_TRAVEL_MM + 400, kin.Y_TRAVEL_MM / 2, 1800)
+        target = (kin.X_TRAVEL_MM + 400, kin.Y_TRAVEL_MM / 2, 1600)
         pose = kin.inverse(target, psi_deg=45.0)
         self.assertAlmostEqual(pose.gx, kin.X_TRAVEL_MM)
         tip = kin.forward(pose).tip

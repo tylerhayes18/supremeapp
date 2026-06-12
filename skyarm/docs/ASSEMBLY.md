@@ -15,9 +15,12 @@ Per gearbox: `*_housing`, 2× `*_disc`, `*_cam`, `*_output`, `*_cover`.
 3. Drop disc 1 over the lower lobe with its lobes meshing the ring
    pins; disc 2 over the upper lobe — rotate it half a lobe so the two
    discs sit 180° out of phase.
-4. Feed the output flange pins through the disc holes; press the output
-   bearing into the cover, slide the cover over the flange, bolt the
-   cover to the housing (6× M4).
+4. Feed the output flange pins through the disc holes (the wide head
+   stays inside the ring).  Press BOTH output bearings into the cover —
+   one from each face; the spacer ledge between them is printed in —
+   then slide the cover over the journal and bolt it to the housing
+   (6× M4).  The spaced bearing pair is what carries the joint's
+   bending moment; do not substitute a single bearing.
 5. Bench test: drive the motor; output must turn smoothly 1/reduction
    per motor turn with no perceptible backlash. A drop of PTFE-safe
    grease on pins and lobes.

@@ -15,10 +15,12 @@ import math
 import trimesh
 
 from .. import spec
+from . import cycloidal
 from . import primitives as P
 from .primitives import NEMA, bolt_circle, box, cyl, cyl_x, cyl_y, difference, holes, rounded_plate, tube, union
 
-TUBE_D = spec.TUBE_OD_MM          # 25.4 mm arm tube
+TUBE_D = spec.TUBE_OD_MM          # arm tube OD
+CLAMP_OFFSET = 30.0               # output clamp offset past the joint axis
 WHEEL_HOLE = 5.2                  # M5 axles for V wheels
 M5, M4, M3 = 5.2, 4.4, 3.4
 TNUT_PITCH = 20.0                 # V-slot channel spacing
@@ -76,11 +78,13 @@ def y_carriage() -> trimesh.Trimesh:
     """Main carriage riding the 2060 bridge; the yaw gearbox housing bolts
     to its underside on a 6-bolt circle.  Print 1."""
     t = 10.0
-    plate = rounded_plate(160, 150, t)
+    span = spec.CARRIAGE_WHEEL_SPAN_MM
+    plate = rounded_plate(span + 60, 150, t)
     cut = []
-    # 6 V wheels: 2060 => wheel rows 84.4 mm apart, 3 wheels per side
+    # 6 V wheels straddling the bridge beam; wheelbase from spec (the
+    # V-wheel load check in skyarm/analysis.py sizes it)
     for sy in (-1, 1):
-        for dx in (-55, 0, 55):
+        for dx in (-span / 2, 0, span / 2):
             cut.append(cyl(WHEEL_HOLE, t, (dx, sy * 42.2, 0)))
     # belt clamp slots
     cut += [box(12, 3, t, (dx, 0, 0)) for dx in (-30, 30)]
@@ -117,9 +121,11 @@ def belt_tensioner() -> trimesh.Trimesh:
 # Arm structure
 # ---------------------------------------------------------------------------
 
-def _tube_clamp_block(length: float = 46.0, width: float = 44.0) -> trimesh.Trimesh:
+def _tube_clamp_block(length: float = 46.0,
+                      width: float | None = None) -> trimesh.Trimesh:
     """Solid block with a horizontal tube bore + pinch slot + 2 M4 bolts.
-    The bore runs along x at mid-height."""
+    The bore runs along x at mid-height; width tracks the tube size."""
+    width = width if width is not None else TUBE_D + 16
     h = TUBE_D + 18
     body = box(length, width, h)
     bore = cyl_x(TUBE_D + 0.3, length + 2, (-length / 2 - 1, 0, h / 2))
@@ -140,22 +146,40 @@ def shoulder_clevis() -> trimesh.Trimesh:
     cut = holes(M5, plate_t, bolt_circle(4, g.output_pin_circle_r * 0.55, 45))
     plate = difference(plate, *cut)
     clamp = _tube_clamp_block()
-    clamp.apply_translation((0, 0, plate_t))
-    return union(plate, clamp)
+    # clamp sits 30 mm past the joint axis along the tube so the incoming
+    # and outgoing links clear each other when the joint folds
+    clamp.apply_translation((CLAMP_OFFSET, 0, plate_t))
+    web = box(36, 30, plate_t, (CLAMP_OFFSET / 2, 0, 0))
+    return union(plate, web, clamp)
+
+
+def _input_standoff(cs, plate_t: float) -> float:
+    """Web height putting the tube-clamp bore exactly on the arm plane.
+
+    The motor face sits ``output_face_z + 0.2 + clevis plate + half
+    clamp`` from the arm plane; the bracket plate (against the motor
+    face) plus this web plus half the clamp must span the same distance,
+    so the input and output of a joint grip coaxial tubes."""
+    half_clamp = (TUBE_D + 18) / 2
+    motor_face = cycloidal.output_face_z(cs) + 0.2 + 8.0 + half_clamp
+    return motor_face - plate_t - half_clamp
 
 
 def elbow_clevis() -> trimesh.Trimesh:
-    """Upper-arm tube -> elbow gearbox housing.  The gearbox base bolts to
-    the side plate with its NEMA pattern.  Print 1."""
+    """Upper-arm tube -> elbow gearbox.  The elbow motor bolts through the
+    side plate into the gearbox housing; the web drops the tube clamp to
+    the arm plane so the upper and forearm tubes stay coaxial.  Print 1."""
     side_t = 9.0
     n = NEMA[23]
     side = rounded_plate(n["face"] + 20, n["face"] + 20, side_t)
     cut = [cyl(n["boss_d"], side_t)]
     cut += holes(n["bolt_d"], side_t, P.nema_bolt_centers(23))
     side = difference(side, *cut)
+    s = _input_standoff(spec.CYCLO_MID, side_t)
+    web = box(40, 34, s, (0, 0, side_t))
     clamp = _tube_clamp_block()
-    clamp.apply_translation((0, 0, side_t))
-    return union(side, clamp)
+    clamp.apply_translation((0, 0, side_t + s))
+    return union(side, web, clamp)
 
 
 def forearm_clevis() -> trimesh.Trimesh:
@@ -166,22 +190,26 @@ def forearm_clevis() -> trimesh.Trimesh:
     plate = cyl(g.output_pin_circle_r * 1.5, plate_t)
     cut = holes(M5, plate_t, bolt_circle(4, g.output_pin_circle_r * 0.55, 45))
     plate = difference(plate, *cut)
-    clamp = _tube_clamp_block(length=40, width=40)
-    clamp.apply_translation((0, 0, plate_t))
-    return union(plate, clamp)
+    clamp = _tube_clamp_block(length=40)
+    clamp.apply_translation((CLAMP_OFFSET, 0, plate_t))
+    web = box(36, 28, plate_t, (CLAMP_OFFSET / 2, 0, 0))
+    return union(plate, web, clamp)
 
 
 def wrist_bracket() -> trimesh.Trimesh:
-    """Forearm tube -> wrist-pitch gearbox (NEMA 17 cyclo-small).  Print 1."""
+    """Forearm tube -> wrist-pitch gearbox (NEMA 17 cyclo-small); same
+    standoff-web construction as the elbow clevis.  Print 1."""
     side_t = 8.0
     n = NEMA[17]
     side = rounded_plate(n["face"] + 18, n["face"] + 18, side_t)
     cut = [cyl(n["boss_d"], side_t)]
     cut += holes(n["bolt_d"], side_t, P.nema_bolt_centers(17))
     side = difference(side, *cut)
-    clamp = _tube_clamp_block(length=36, width=36)
-    clamp.apply_translation((0, 0, side_t))
-    return union(side, clamp)
+    s = _input_standoff(spec.CYCLO_SMALL, side_t)
+    web = box(32, 32, s, (0, 0, side_t))
+    clamp = _tube_clamp_block(length=36)
+    clamp.apply_translation((0, 0, side_t + s))
+    return union(side, web, clamp)
 
 
 def roll_housing() -> trimesh.Trimesh:

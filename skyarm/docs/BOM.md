@@ -23,16 +23,16 @@ under load.
 | # | item | qty | use | ~$ |
 |---|---|---|---|---|
 | 5 | 2040 V-slot extrusion, room length (~3.6 m) | 2 | ceiling X rails | 80 |
-| 6 | 2060 V-slot extrusion, room width (~3.0 m) | 1 | Y bridge beam | 55 |
+| 6 | C-beam 4080 V-slot, room width (~3.0 m) | 1 | Y bridge beam (2060 deflected too much — see analysis.py) | 95 |
 | 7 | GT2 belt, 9 mm steel-core, 10 m | 1 | X + Y drives | 30 |
 | 8 | GT2 pulley 20T / 8 mm bore | 3 | gantry drives | 12 |
 | 9 | GT2 idler 9 mm, smooth | 6 | belt returns + tensioners | 12 |
 | 10 | Solid V wheel kits (wheel + 625ZZ + spacers + M5) | 14 | 8 on X trucks, 6 on Y carriage | 35 |
-| 11 | Aluminium tube 25.4 mm OD × 1.5 mm wall × 1 m | 2 | upper arm + forearm | 30 |
+| 11 | Aluminium tube 50.8 mm (2") OD × 2 mm wall × 1 m | 2 | upper arm + forearm (1" tube sagged 37 mm — see analysis.py) | 50 |
 | 12 | 6705ZZ thin bearing (25×32×4) | 6 | cyclo cam lobes (big/mid/yaw) | 18 |
 | 13 | 6803ZZ bearing (17×26×5) | 2 | cyclo-small cam lobes | 6 |
-| 14 | 6810ZZ bearing (50×65×7) | 3 | big/mid/yaw output support | 21 |
-| 15 | 6806ZZ bearing (30×42×7) | 3 | cyclo-small output + wrist roll | 12 |
+| 14 | 6810ZZ bearing (50×65×7) | 6 | big/mid/yaw output: 2 per joint, spaced pair reacts the bending moment | 42 |
+| 15 | 6806ZZ bearing (30×42×7) | 4 | cyclo-small output (2) + wrist roll (2) | 16 |
 | 16 | GT2 belt closed loop 200 mm + 16T pulley 5 mm | 1 | wrist roll 5:1 stage | 8 |
 
 ## Electronics

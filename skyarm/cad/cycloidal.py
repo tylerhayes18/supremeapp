@@ -44,6 +44,31 @@ BEARINGS = {
 NEMA_OF = {"cyclo-big": 24, "cyclo-mid": 23, "cyclo-yaw": 23, "cyclo-small": 17}
 
 
+FLANGE_T = 7.0            # housing motor flange thickness
+HEAD_T = 6.0              # output flange pin-head disc thickness
+JOURNAL_H = 26.6          # output journal: spans both bearings + spacer
+BRG_SPACING = 10.0        # integral cover ledge between the two bearings
+
+
+def ring_h(spec: CycloSpec) -> float:
+    """Pin-ring height: two discs + the output pin head + clearances."""
+    return 2 * spec.disc_thickness + 1.2 + HEAD_T + 0.8
+
+
+def output_face_z(spec: CycloSpec) -> float:
+    """Distance from the housing's motor-flange face to the outer face of
+    the assembled output flange — the plane that clevises bolt against."""
+    return 40.8 + 2 * spec.disc_thickness
+
+
+def cover_z(spec: CycloSpec) -> float:
+    return FLANGE_T + ring_h(spec)
+
+
+def head_d(spec: CycloSpec) -> float:
+    return 2 * (spec.output_pin_circle_r + spec.output_pin_r + 3.0)
+
+
 def cycloid_profile(spec: CycloSpec, samples: int = 1200) -> np.ndarray:
     """2D outline of the cycloid disc (classic epitrochoid offset curve)."""
     R, Rr, E, N = spec.pin_circle_r, spec.pin_r, spec.eccentricity, spec.pin_count
@@ -71,25 +96,25 @@ def disc(spec: CycloSpec, samples: int = 1200) -> trimesh.Trimesh:
 
 def housing(spec: CycloSpec) -> trimesh.Trimesh:
     """Motor-side flange + pin ring.  Print flange-down, no supports."""
-    b = BEARINGS[spec.name]
     nema = P.NEMA[NEMA_OF[spec.name]]
     od = spec.housing_od
-    flange_t = 7.0
-    ring_h = 2 * spec.disc_thickness + 3 * DISC_GAP
+    rh = ring_h(spec)
     cavity_r = spec.pin_circle_r + spec.pin_r * 0.5   # pins half-embedded
 
-    base = P.cyl(od, flange_t)
-    ring = P.tube(od, 2 * cavity_r, ring_h, (0, 0, flange_t))
-    # ring pins, printed integral, half-buried in the wall
-    pins = [P.cyl(2 * spec.pin_r, ring_h, (cx, cy, flange_t), seg=48)
+    base = P.cyl(od, FLANGE_T)
+    ring = P.tube(od, 2 * cavity_r, rh, (0, 0, FLANGE_T))
+    # ring pins, printed integral, half-buried in the wall; they stop at
+    # disc height so the output pin head can spin above them
+    pin_h = 2 * spec.disc_thickness + 1.2
+    pins = [P.cyl(2 * spec.pin_r, pin_h, (cx, cy, FLANGE_T), seg=48)
             for cx, cy in P.bolt_circle(spec.pin_count, spec.pin_circle_r)]
     body = P.union(base, ring, *pins)
 
-    cutters = [P.cyl(nema["boss_d"], flange_t + 2, (0, 0, -1))]          # motor boss
-    cutters += P.holes(nema["bolt_d"], flange_t, P.nema_bolt_centers(NEMA_OF[spec.name]))
+    cutters = [P.cyl(nema["boss_d"], FLANGE_T + 2, (0, 0, -1))]          # motor boss
+    cutters += P.holes(nema["bolt_d"], FLANGE_T, P.nema_bolt_centers(NEMA_OF[spec.name]))
     # cover bolt bosses: 6x M4 through the ring wall top
     cover_r = (cavity_r + od / 2) / 2 + spec.pin_r * 0.25
-    cutters += [P.cyl(3.4, 14, (cx, cy, flange_t + ring_h - 12), seg=24)
+    cutters += [P.cyl(3.4, 14, (cx, cy, FLANGE_T + rh - 12), seg=24)
                 for cx, cy in P.bolt_circle(6, cover_r, start_deg=30)]
     return P.difference(body, *cutters)
 
@@ -114,33 +139,44 @@ def cam(spec: CycloSpec) -> trimesh.Trimesh:
 
 
 def output_flange(spec: CycloSpec) -> trimesh.Trimesh:
-    """Drive-pin carrier; the pins pass through the disc holes and convert
-    the disc's wobble into clean output rotation.  Print pins-up."""
+    """Mushroom output: a wide pin-head disc inside the housing (its pins
+    drop through the disc holes), with a journal stem riding through TWO
+    spaced bearings in the cover.  The two-bearing span reacts the joint
+    bending moment — a single thin bearing failed the moment check in
+    skyarm/analysis.py — and the head rigidly ties all the drive pins
+    together.  Print journal-down, pins-up."""
     b = BEARINGS[spec.name]
-    plate_t = 6.0
     pin_len = 2 * spec.disc_thickness + 2 * DISC_GAP
-    plate = P.cyl(b["out_id"] - 0.2, plate_t + b["out_w"])  # rides in output bearing
-    pins = [P.cyl(2 * spec.output_pin_r, pin_len, (cx, cy, plate_t + b["out_w"]), seg=48)
-            for cx, cy in P.bolt_circle(spec.output_pin_count, spec.output_pin_circle_r)]
-    body = P.union(plate, *pins)
-    # output bolt pattern: 4x M5 threaded inserts on half the pin circle radius
-    cutters = P.holes(4.6, plate_t + b["out_w"],
+    journal = P.cyl(b["out_id"] - 0.3, JOURNAL_H)
+    head = P.cyl(head_d(spec), HEAD_T, (0, 0, JOURNAL_H))
+    pins = [P.cyl(2 * spec.output_pin_r, pin_len,
+                  (cx, cy, JOURNAL_H + HEAD_T), seg=48)
+            for cx, cy in P.bolt_circle(spec.output_pin_count,
+                                        spec.output_pin_circle_r)]
+    body = P.union(journal, head, *pins)
+    # output bolt pattern: 4x M5 through journal + head (clevis side)
+    cutters = P.holes(4.6, JOURNAL_H + HEAD_T,
                       P.bolt_circle(4, spec.output_pin_circle_r * 0.55, 45))
     return P.difference(body, *cutters)
 
 
 def cover(spec: CycloSpec) -> trimesh.Trimesh:
-    """Front cover; captures the output bearing, bolts to the housing."""
+    """Front cover holding BOTH output bearings with an integral spacer
+    ledge between them; bolts to the housing ring."""
     b = BEARINGS[spec.name]
     od = spec.housing_od
-    t = b["out_w"] + 5.0
+    t = 2 * b["out_w"] + BRG_SPACING                  # 24.4 with 7 mm brgs
     cavity_r = spec.pin_circle_r + spec.pin_r * 0.5
     cover_r = (cavity_r + od / 2) / 2 + spec.pin_r * 0.25
 
     body = P.cyl(od, t)
     cutters = [
-        P.cyl(b["out_od"] + 0.2, b["out_w"] + 0.2, (0, 0, t - b["out_w"] - 0.2)),
-        P.cyl(b["out_od"] - 6, t + 2, (0, 0, -1)),       # central opening
+        # inner bearing pocket (pressed in from the housing side)
+        P.cyl(b["out_od"] + 0.2, b["out_w"] + 0.2, (0, 0, -0.1)),
+        # outer bearing pocket (pressed in from outside)
+        P.cyl(b["out_od"] + 0.2, b["out_w"] + 0.3, (0, 0, t - b["out_w"] - 0.2)),
+        # through-bore past the integral spacer ledge
+        P.cyl(b["out_od"] - 8, t + 2, (0, 0, -1)),
     ]
     cutters += P.holes(4.4, t, P.bolt_circle(6, cover_r, start_deg=30))
     return P.difference(body, *cutters)

@@ -188,15 +188,17 @@ class World:
 def demo_mission(world: World):
     cx, cy = kin.X_TRAVEL_MM / 2, kin.Y_TRAVEL_MM / 2
     low_z = kin.CEILING_MM - 1524.0 + 10.0      # near max reach, straight down
+    # lift/carry heights respect the interference-limited elbow fold
+    # (tip more than ~430 mm above max drop needs >105 deg of elbow)
     world.queue(
         ("goto", (cx, cy, low_z), 0.0),                       # full 5 ft drop
         ("grip", True), ("dwell", 0.3),                        # pick
-        ("goto", (cx, cy, low_z + 600), 0.0),                  # lift
-        ("goto", (400.0, 400.0, low_z + 600), 0.0),            # carry to corner
+        ("goto", (cx, cy, low_z + 400), 0.0),                  # lift
+        ("goto", (400.0, 400.0, low_z + 400), 0.0),            # carry to corner
         ("goto", (400.0, 400.0, low_z + 50), 0.0),
         ("grip", False), ("dwell", 0.3),                       # place
         ("goto", (kin.X_TRAVEL_MM - 300, kin.Y_TRAVEL_MM - 300,
                   low_z + 300), 30.0),                         # angled approach
-        ("goto", (cx, cy, low_z + 500), 0.0),                  # home-ish
+        ("goto", (cx, cy, low_z + 400), 0.0),                  # home-ish
     )
     return world
