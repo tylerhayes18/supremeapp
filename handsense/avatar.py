@@ -1,8 +1,8 @@
 """3D humanoid avatar rendered with OpenGL, driven by holistic landmarks.
 
 Two render modes:
-1. **Mesh mode** (default): loads a real 3D humanoid GLB model, segments it
-   by body part, and poses each segment to follow MediaPipe landmarks.
+1. **Mesh mode** (default): loads a GLB humanoid model, poses it via linear
+   blend skinning (12 bones, per-vertex weights) to articulate all limbs.
 2. **Geometric fallback**: capsule limbs + spheres if no model is available.
 
 Both modes include:
@@ -309,10 +309,9 @@ class AvatarRenderer:
     # ── Mesh-based body rendering ──────────────────────────────────────
 
     def _draw_mesh_body(self, obs: HolisticObservation) -> None:
-        """Render the mesh as one intact piece with a global body transform."""
+        """Render the articulated mesh via linear blend skinning."""
         gl_lm = [_mp_to_gl(*pt) for pt in obs.pose_world]
 
-        # Body landmarks.
         lh = np.array(gl_lm[LEFT_HIP])
         rh = np.array(gl_lm[RIGHT_HIP])
         ls = np.array(gl_lm[LEFT_SHOULDER])
@@ -321,44 +320,25 @@ class AvatarRenderer:
         hip_center = (lh + rh) / 2
         shoulder_center = (ls + rs) / 2
 
-        # Scale: match tracked torso length to model torso length.
         torso_len = float(np.linalg.norm(shoulder_center - hip_center))
         model_torso = self._mesh.model_height * 0.35
         scale = torso_len / max(model_torso, 0.01)
 
-        # Facing direction: perpendicular to shoulder line, projected on XZ.
-        right = rs - ls
-        forward = np.array([-right[2], 0.0, right[0]])
-        fwd_len = np.linalg.norm(forward)
-        if fwd_len > 1e-6:
-            forward /= fwd_len
-        yaw = float(np.degrees(np.arctan2(forward[0], forward[2])))
+        # Convert GL landmarks → model space for skinning.
+        gl_landmarks = np.array(gl_lm, dtype=np.float32)
+        model_hip = np.array([self._mesh.model_center[0],
+                              self._mesh.hip_y,
+                              self._mesh.model_center[2]])
+        tracked_model = (gl_landmarks - hip_center) / scale + model_hip
 
-        # Torso lean: angle of hip->shoulder vector relative to vertical.
-        spine = shoulder_center - hip_center
-        spine_len = max(np.linalg.norm(spine), 1e-6)
-        lean_x = float(np.degrees(np.arcsin(np.clip(spine[2] / spine_len, -1, 1))))
-        lean_z = float(np.degrees(np.arcsin(np.clip(-spine[0] / spine_len, -1, 1))))
+        # Deform mesh (LBS).
+        self._mesh.skin(tracked_model)
 
+        # Place the deformed mesh in GL space (scale + translate only).
         glPushMatrix()
-
-        # 1. Translate so model hip is at tracked hip position.
         glTranslatef(*hip_center)
-
-        # 2. Rotate to face same direction as the user.
-        glRotatef(yaw, 0, 1, 0)
-
-        # 3. Apply body lean.
-        glRotatef(lean_x, 1, 0, 0)
-        glRotatef(lean_z, 0, 0, 1)
-
-        # 4. Scale to match body size.
         glScalef(scale, scale, scale)
-
-        # 5. Offset so model's hip point is at origin.
-        glTranslatef(-self._mesh.model_center[0],
-                      -self._mesh.hip_y,
-                      -self._mesh.model_center[2])
+        glTranslatef(-model_hip[0], -model_hip[1], -model_hip[2])
 
         if self._mesh._draw_colors is None:
             glColor4f(0.65, 0.65, 0.70, 1.0)
@@ -366,7 +346,6 @@ class AvatarRenderer:
 
         glPopMatrix()
 
-        # Face features and finger overlays.
         self._draw_head_features(gl_lm, obs)
         if obs.has_left_hand or obs.has_right_hand:
             self._draw_hands(obs, gl_lm)
