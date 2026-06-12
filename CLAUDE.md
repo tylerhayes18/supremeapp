@@ -70,6 +70,16 @@ There is no camera in CI/cloud environments — verify changes via the unit
 tests and `python -m py_compile handsense/*.py`. Anything touching the live
 loop needs a human with a webcam to confirm.
 
+## SkyArm (second project in this repo)
+
+`skyarm/` is a ceiling-gantry robotic arm design: parametric CAD that
+generates printable STLs, FK/IK, and a 3D simulation test environment.
+All dimensions/motors/ratios live in `skyarm/spec.py` — change it, run
+`python -m unittest discover -s tests -p "test_skyarm*"`, then
+`python -m skyarm.cad.generate` to regenerate `skyarm/stl/`. CAD needs
+`trimesh manifold3d shapely numpy`; the kinematics/sim core is
+stdlib-only and its tests run anywhere. See `skyarm/README.md`.
+
 ## Git
 
 - Work on `claude/...` feature branches; push with `git push -u origin <branch>`.
