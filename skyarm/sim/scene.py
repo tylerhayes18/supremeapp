@@ -105,9 +105,23 @@ def build(world: World, target=None) -> list:
 
 
 def snapshot(world: World, out_png: str, target=None, size=(1100, 800),
-             eye_dir=(0.8, -1.0, 0.45)):
+             eye_dir=(0.8, -1.0, 0.45), real_geometry: bool = False):
+    """Render the world; ``real_geometry=True`` swaps the stick-figure
+    machine for the actual CAD assembly meshes."""
     from ..render import render_meshes
-    meshes = build(world, target)
+    if real_geometry:
+        from .. import assembly
+        meshes = [_box((spec.ROOM["x_mm"], spec.ROOM["y_mm"], 8),
+                       (spec.ROOM["x_mm"] / 2, spec.ROOM["y_mm"] / 2, -4),
+                       COL_FLOOR)]
+        meshes += assembly.to_render(assembly.machine(world.pose()))
+        if target is not None:
+            t = np.array(target) + np.array([150.0, 200.0, 0.0])
+            m = trimesh.creation.icosphere(subdivisions=2, radius=25)
+            m.apply_translation(t)
+            meshes.append((m.vertices, m.faces, COL_TARGET))
+    else:
+        meshes = build(world, target)
     chain = world.chain()
     off = np.array([150.0, 200.0, 0.0])
     center = (np.array(chain.shoulder) + np.array(chain.tip)) / 2 + off

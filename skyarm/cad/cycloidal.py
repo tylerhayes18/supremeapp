@@ -54,9 +54,9 @@ def cycloid_profile(spec: CycloSpec, samples: int = 1200) -> np.ndarray:
     return np.column_stack([x, y])
 
 
-def disc(spec: CycloSpec) -> trimesh.Trimesh:
+def disc(spec: CycloSpec, samples: int = 1200) -> trimesh.Trimesh:
     b = BEARINGS[spec.name]
-    outline = cycloid_profile(spec)
+    outline = cycloid_profile(spec, samples)
     # shrink by running clearance (offset towards centre)
     from shapely.geometry import Polygon
     poly = Polygon(outline).buffer(-CLEAR, quad_segs=4)

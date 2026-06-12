@@ -28,17 +28,18 @@ def headless_report() -> int:
     return 0 if not world.faults else 1
 
 
-def snapshots(base: str) -> int:
+def snapshots(base: str, real: bool = False) -> int:
     from . import scene
     world = demo_mission(World())
     stem = base[:-4] if base.endswith(".png") else base
     frames = []
     i = 0
-    every = 2.0   # capture a frame every 2 simulated seconds
+    every = 4.0 if real else 2.0   # real CAD geometry renders are slower
+    size = (960, 720) if real else (1100, 800)
     while (world.mission or not world.settled) and world.time < 600:
         world.run(seconds=every)
         path = f"{stem}_{i:02d}.png"
-        scene.snapshot(world, path)
+        scene.snapshot(world, path, size=size, real_geometry=real)
         frames.append(path)
         i += 1
     print("\n".join(frames))
@@ -50,9 +51,11 @@ def main() -> int:
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--snapshot", metavar="PNG")
+    ap.add_argument("--real", action="store_true",
+                    help="snapshot with real CAD assembly meshes")
     args = ap.parse_args()
     if args.snapshot:
-        return snapshots(args.snapshot)
+        return snapshots(args.snapshot, real=args.real)
     if args.headless:
         return headless_report()
     from .viewer import run_viewer
