@@ -500,11 +500,67 @@ class AvatarRenderer:
         self._mesh.skin(tracked_model)
         self._last_transform = (hip_center.copy(), scale)
 
-        self._render_mesh(hip_center, scale)
+        model_hip = np.array([self._mesh.model_center[0],
+                              self._mesh.hip_y,
+                              self._mesh.model_center[2]])
+        ground_y = -1.05
+        translate_y = ground_y + scale * (
+            self._mesh.hip_y - float(self._mesh.bounds_min[1]))
 
-        gl_lm_list = [tuple(gl_lm[i]) for i in range(33)]
+        glPushMatrix()
+        glTranslatef(float(hip_center[0]), translate_y, float(hip_center[2]))
+        glScalef(scale, scale, scale)
+        glTranslatef(-model_hip[0], -model_hip[1], -model_hip[2])
+
+        if self._mesh._draw_colors is None:
+            glColor4f(0.65, 0.65, 0.70, 1.0)
+        self._mesh.draw()
+
+        # Draw articulated hands in model space (inside mesh transform).
         if obs.has_left_hand or obs.has_right_hand:
-            self._draw_hands(obs, gl_lm_list)
+            inv_s = 1.0 / max(scale, 0.01)
+            for hand_world in [obs.left_hand_world, obs.right_hand_world]:
+                if hand_world is None:
+                    continue
+                hand_gl = np.array(
+                    [_mp_to_gl(*pt) for pt in hand_world], dtype=np.float32)
+                hand_model = (hand_gl - hip_center) / scale + model_hip
+                pts = [tuple(hand_model[i]) for i in range(len(hand_model))]
+
+                glColor4f(*FINGER_COLOR)
+                palm_idx = [0, 5, 9, 13, 17]
+                palm = [pts[i] for i in palm_idx]
+                ctr = tuple(np.mean(palm, axis=0))
+                n = _vec_normalize(_vec_cross(
+                    _vec_sub(palm[1], palm[0]),
+                    _vec_sub(palm[2], palm[0])))
+                glBegin(GL_TRIANGLE_FAN)
+                glNormal3f(*n)
+                glVertex3f(*ctr)
+                for pt in palm:
+                    glVertex3f(*pt)
+                glVertex3f(*palm[0])
+                glEnd()
+
+                for finger_indices in HAND_FINGERS:
+                    if finger_indices[0] == 1:
+                        chain = [pts[0]] + [pts[i] for i in finger_indices]
+                    else:
+                        chain = ([pts[finger_indices[0]]]
+                                 + [pts[i] for i in finger_indices[1:]])
+                    for ci in range(len(chain) - 1):
+                        r = (0.006 if ci < 2 else 0.005) * inv_s
+                        glColor4f(*FINGER_COLOR)
+                        _draw_capsule(chain[ci], chain[ci + 1],
+                                      r, r * 0.85, self._quadric)
+                    for j in chain:
+                        glPushMatrix()
+                        glTranslatef(*j)
+                        glColor4f(*FINGER_JOINT)
+                        gluSphere(self._quadric, 0.006 * inv_s, 10, 6)
+                        glPopMatrix()
+
+        glPopMatrix()
 
     def _draw_frozen_mesh(self) -> None:
         """Draw the mesh in its last skinned pose (when tracking is lost)."""
