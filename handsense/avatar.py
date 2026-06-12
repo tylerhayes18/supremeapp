@@ -309,53 +309,47 @@ class AvatarRenderer:
     # ── Mesh-based body rendering ──────────────────────────────────────
 
     def _draw_mesh_body(self, obs: HolisticObservation) -> None:
-        """Render the loaded 3D mesh, posing each segment from landmarks."""
+        """Render the loaded 3D mesh, deformed per-vertex from landmarks."""
         gl_lm = [_mp_to_gl(*pt) for pt in obs.pose_world]
 
-        # Compute body scale: shoulder width in GL space.
-        ls = np.array(gl_lm[LEFT_SHOULDER])
-        rs = np.array(gl_lm[RIGHT_SHOULDER])
+        # Compute body scale and position.
         lh = np.array(gl_lm[LEFT_HIP])
         rh = np.array(gl_lm[RIGHT_HIP])
-        body_height = (np.linalg.norm(ls - lh) + np.linalg.norm(rs - rh)) / 2
-        model_scale = body_height / (self._mesh.model_height * 0.42)
-
+        ls = np.array(gl_lm[LEFT_SHOULDER])
+        rs = np.array(gl_lm[RIGHT_SHOULDER])
         hip_center = (lh + rh) / 2
+        shoulder_center = (ls + rs) / 2
+        torso_len = np.linalg.norm(shoulder_center - hip_center)
+        model_torso = self._mesh.model_height * 0.35
+        scale = max(torso_len / max(model_torso, 0.01), 0.1)
 
-        for seg_id, segment in enumerate(self._mesh.segments):
-            if segment is None:
-                continue
+        # Convert all 33 tracked landmarks from GL space to model space.
+        gl_landmarks = np.array(gl_lm, dtype=np.float32)  # (33, 3)
+        model_hip_y = self._mesh.bounds_min[1] + self._mesh.model_height * 0.47
+        model_hip = np.array([self._mesh.model_center[0], model_hip_y,
+                              self._mesh.model_center[2]])
 
-            color = SEGMENT_COLORS[seg_id] if seg_id < len(SEGMENT_COLORS) else SHIRT
-            glColor4f(*color)
+        # tracked_model = (gl_pos - hip_center) / scale + model_hip
+        tracked_model = (gl_landmarks - hip_center[None, :]) / scale + model_hip[None, :]
 
-            if seg_id in SEGMENT_LANDMARK_MAP:
-                primary, secondary = SEGMENT_LANDMARK_MAP[seg_id]
-                target_pos = np.array(gl_lm[primary])
-            else:
-                target_pos = hip_center
+        # Deform the mesh.
+        self._mesh.deform(tracked_model)
 
-            # Translate the mesh segment: offset from its rest centroid to
-            # the tracked landmark position.
-            rest_centroid = segment.centroid.copy()
-            # Convert rest centroid to world scale.
-            rest_world = (rest_centroid - self._mesh.model_center) * model_scale
+        # Render.
+        glPushMatrix()
+        glTranslatef(*hip_center)
+        glScalef(scale, scale, scale)
+        glTranslatef(-model_hip[0], -model_hip[1], -model_hip[2])
 
-            offset = target_pos - rest_world
+        glColor4f(0.65, 0.65, 0.70, 1.0)
+        self._mesh.draw()
 
-            glPushMatrix()
-            glTranslatef(*offset)
-            glScalef(model_scale, model_scale, model_scale)
-            # Center the mesh on origin before scaling.
-            glTranslatef(-self._mesh.model_center[0],
-                         -self._mesh.model_center[1],
-                         -self._mesh.model_center[2])
-            segment.draw()
-            glPopMatrix()
+        glPopMatrix()
 
-        # Still draw face features and fingers on top of the mesh.
+        # Face features and fingers on top of the mesh.
         self._draw_head_features(gl_lm, obs)
-        self._draw_hands(obs, gl_lm)
+        if obs.has_left_hand or obs.has_right_hand:
+            self._draw_hands(obs, gl_lm)
 
     # ── Geometric body rendering (fallback) ────────────────────────────
 
