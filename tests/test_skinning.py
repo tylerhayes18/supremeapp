@@ -95,8 +95,8 @@ class TestSkinning(unittest.TestCase):
         rest[LEFT_WRIST] = ls + [0, 0.50, 0]
         self.avatar.skin(rest)
 
-        # Left arm bones: 2 (upper) and 3 (forearm).
-        arm_mask = np.isin(self.avatar._bone_idx[:, 0], [2, 3])
+        # Left arm bones: 4 (upper) and 5 (forearm).
+        arm_mask = np.isin(self.avatar._bone_idx[:, 0], [4, 5])
         if np.any(arm_mask):
             dy = (self.avatar._skinned_verts[arm_mask, 1] -
                   self.avatar._vertices[arm_mask, 1]).mean()
@@ -110,8 +110,8 @@ class TestSkinning(unittest.TestCase):
         rest[LEFT_WRIST] = ls + [0, 0.50, 0]
         self.avatar.skin(rest)
 
-        # Right arm bones: 4 (upper) and 5 (forearm).
-        r_arm_mask = np.isin(self.avatar._bone_idx[:, 0], [4, 5])
+        # Right arm bones: 6 (upper) and 7 (forearm).
+        r_arm_mask = np.isin(self.avatar._bone_idx[:, 0], [6, 7])
         if np.any(r_arm_mask):
             r_diff = np.abs(self.avatar._skinned_verts[r_arm_mask] -
                             self.avatar._vertices[r_arm_mask]).max()

@@ -59,6 +59,7 @@ def main(argv=None) -> int:
     mirror = not args.no_mirror
 
     print("Body tracking running.")
+    print("  Stand in T-POSE (arms horizontal) to calibrate the mesh.")
     print("  arrow keys = orbit | +/- = zoom | r = reset view | q = quit")
     print("  Tracking: body (33), face (478), hands (21 each)")
 

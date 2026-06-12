@@ -5,6 +5,9 @@ Each vertex is assigned weighted influence from the nearest skeleton bones
 rigid transforms (rotation + translation) are computed from rest -> tracked
 pose and blended per-vertex, producing smooth articulated movement without
 joint tearing.
+
+An optional T-pose calibration step captures the user's actual body
+proportions, mapping them onto the model for much better bone weights.
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ DEFAULT_MODEL_URL = "https://arweave.net/gwG7w4bY-A5c3R6A6GOz3xBCgbPvkFQmqPIDtvn
 MODEL_CACHE = os.path.join(os.path.expanduser("~"), ".cache", "handsense")
 DEFAULT_MODEL_PATH = os.path.join(MODEL_CACHE, "avatar.glb")
 
-K_WEIGHTS = 2
+K_WEIGHTS = 3
 
 # Virtual landmark indices (appended after MediaPipe's 33).
 V_HIP_CENTER = 33
@@ -43,22 +46,31 @@ V_SHOULDER_CENTER = 34
 N_LANDMARKS = 35
 
 # Skeleton bones: (parent_landmark, child_landmark).
+# Torso has three bones (center spine + two sides) to prevent arm bones
+# from capturing torso vertices.
 SKEL_BONES = [
-    (V_HIP_CENTER, V_SHOULDER_CENTER),   # 0  spine
-    (V_SHOULDER_CENTER, NOSE),            # 1  head/neck
-    (LEFT_SHOULDER, LEFT_ELBOW),          # 2  left upper arm
-    (LEFT_ELBOW, LEFT_WRIST),             # 3  left forearm
-    (RIGHT_SHOULDER, RIGHT_ELBOW),        # 4  right upper arm
-    (RIGHT_ELBOW, RIGHT_WRIST),           # 5  right forearm
-    (LEFT_HIP, LEFT_KNEE),               # 6  left thigh
-    (LEFT_KNEE, LEFT_ANKLE),             # 7  left shin
-    (RIGHT_HIP, RIGHT_KNEE),             # 8  right thigh
-    (RIGHT_KNEE, RIGHT_ANKLE),           # 9  right shin
-    (LEFT_ANKLE, LEFT_FOOT_INDEX),       # 10 left foot
-    (RIGHT_ANKLE, RIGHT_FOOT_INDEX),     # 11 right foot
+    (V_HIP_CENTER, V_SHOULDER_CENTER),   # 0  spine center
+    (LEFT_HIP, LEFT_SHOULDER),            # 1  left torso side
+    (RIGHT_HIP, RIGHT_SHOULDER),          # 2  right torso side
+    (V_SHOULDER_CENTER, NOSE),            # 3  head/neck
+    (LEFT_SHOULDER, LEFT_ELBOW),          # 4  left upper arm
+    (LEFT_ELBOW, LEFT_WRIST),             # 5  left forearm
+    (RIGHT_SHOULDER, RIGHT_ELBOW),        # 6  right upper arm
+    (RIGHT_ELBOW, RIGHT_WRIST),           # 7  right forearm
+    (LEFT_HIP, LEFT_KNEE),               # 8  left thigh
+    (LEFT_KNEE, LEFT_ANKLE),             # 9  left shin
+    (RIGHT_HIP, RIGHT_KNEE),             # 10 right thigh
+    (RIGHT_KNEE, RIGHT_ANKLE),           # 11 right shin
+    (LEFT_ANKLE, LEFT_FOOT_INDEX),       # 12 left foot
+    (RIGHT_ANKLE, RIGHT_FOOT_INDEX),     # 13 right foot
 ]
 
 N_BONES = len(SKEL_BONES)
+
+# Bones that should only capture vertices far from the body center.
+# These get a distance penalty for central vertices.
+_LIMB_BONES = {4, 5, 6, 7}    # arm bones
+_LEG_BONES = {8, 9, 10, 11}   # leg bones
 
 
 def _ensure_model(model_path: str | None = None) -> str:
@@ -175,7 +187,6 @@ def _estimate_rest_landmarks(bounds_min: np.ndarray, bounds_max: np.ndarray) -> 
     lm[LEFT_FOOT_INDEX] = [cx - hip_w * 0.90, foot_y, cz + h * 0.05]
     lm[RIGHT_FOOT_INDEX] = [cx + hip_w * 0.90, foot_y, cz + h * 0.05]
 
-    # Virtual landmarks.
     lm[V_HIP_CENTER] = (lm[LEFT_HIP] + lm[RIGHT_HIP]) / 2
     lm[V_SHOULDER_CENTER] = (lm[LEFT_SHOULDER] + lm[RIGHT_SHOULDER]) / 2
 
@@ -183,29 +194,83 @@ def _estimate_rest_landmarks(bounds_min: np.ndarray, bounds_max: np.ndarray) -> 
 
 
 def _compute_bone_weights(vertices: np.ndarray,
-                          rest_landmarks: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Assign each vertex weighted influence from the K nearest bones."""
+                          rest_landmarks: np.ndarray,
+                          model_height: float) -> tuple[np.ndarray, np.ndarray]:
+    """Assign each vertex weighted influence from the K nearest bones.
+
+    Applies a distance penalty to arm/leg bones for central-body vertices,
+    preventing limb bones from capturing torso geometry.
+    """
     n = len(vertices)
+    cx = float((rest_landmarks[LEFT_HIP][0] + rest_landmarks[RIGHT_HIP][0]) / 2)
+    shoulder_w = abs(rest_landmarks[LEFT_SHOULDER][0] - cx)
+    hip_y = float(rest_landmarks[V_HIP_CENTER][1])
+    shoulder_y = float(rest_landmarks[V_SHOULDER_CENTER][1])
+
     dists = np.full((n, N_BONES), np.inf, dtype=np.float32)
     for b, (lm_a, lm_b) in enumerate(SKEL_BONES):
         dists[:, b] = _point_segment_dist(vertices, rest_landmarks[lm_a], rest_landmarks[lm_b])
+
+    # Penalize arm bones for vertices inside the shoulder width.
+    torso_guard = model_height * 0.10
+    x_dist = np.abs(vertices[:, 0] - cx)
+    inside_torso = x_dist < shoulder_w * 1.3
+    for b in _LIMB_BONES:
+        dists[inside_torso, b] += torso_guard
+
+    # Penalize leg bones for vertices above hip level.
+    above_hip = vertices[:, 1] > (hip_y + shoulder_w * 0.5)
+    for b in _LEG_BONES:
+        dists[above_hip, b] += torso_guard
+
+    # Penalize arm bones for vertices below hip level.
+    below_hip = vertices[:, 1] < hip_y
+    for b in _LIMB_BONES:
+        dists[below_hip, b] += torso_guard
 
     bone_idx = np.argpartition(dists, K_WEIGHTS, axis=1)[:, :K_WEIGHTS].astype(np.int32)
     row_idx = np.arange(n)[:, None]
     k_dists = dists[row_idx, bone_idx]
 
-    # Gaussian falloff for smooth blending at joints.
     avg_bone_len = np.mean([
         np.linalg.norm(rest_landmarks[b] - rest_landmarks[a])
         for a, b in SKEL_BONES
     ])
-    sigma = max(avg_bone_len * 0.3, 0.01)
+    sigma = max(avg_bone_len * 0.35, 0.01)
     w = np.exp(-(k_dists ** 2) / (sigma ** 2))
     w_sum = w.sum(axis=1, keepdims=True)
     w_sum[w_sum < 1e-12] = 1.0
     weights = (w / w_sum).astype(np.float32)
 
     return bone_idx, weights
+
+
+def is_tpose(landmarks_33: np.ndarray) -> bool:
+    """Check if the person is roughly in a T-pose (arms horizontal)."""
+    ls = landmarks_33[LEFT_SHOULDER]
+    rs = landmarks_33[RIGHT_SHOULDER]
+    le = landmarks_33[LEFT_ELBOW]
+    re = landmarks_33[RIGHT_ELBOW]
+    lw = landmarks_33[LEFT_WRIST]
+    rw = landmarks_33[RIGHT_WRIST]
+
+    shoulder_width = abs(rs[0] - ls[0])
+    if shoulder_width < 0.01:
+        return False
+
+    # Arms should extend well past shoulders.
+    left_span = abs(lw[0] - ls[0])
+    right_span = abs(rw[0] - rs[0])
+    if left_span < shoulder_width * 0.8 or right_span < shoulder_width * 0.8:
+        return False
+
+    # Elbows and wrists should be near shoulder height (not hanging down).
+    shoulder_y = (ls[1] + rs[1]) / 2
+    for pt in [le, re, lw, rw]:
+        if abs(pt[1] - shoulder_y) > shoulder_width * 0.6:
+            return False
+
+    return True
 
 
 class AvatarMesh:
@@ -245,12 +310,23 @@ class AvatarMesh:
             self._draw_colors = np.ascontiguousarray(
                 colors[self._face_idx], dtype=np.float32)
 
-        # Bone skinning setup.
+        # Initial bone weights from bounding-box estimates.
         self._rest_landmarks = _estimate_rest_landmarks(self.bounds_min, self.bounds_max)
-        self._bone_idx, self._bone_weights = _compute_bone_weights(
-            self._vertices, self._rest_landmarks)
+        self._setup_bones(self._rest_landmarks)
 
-        # Pre-compute per-bone vertex index lists for fast runtime skinning.
+        self._calibrated = False
+        self._skinned_verts = self._vertices.copy()
+        self._skinned_norms = self._normals.copy()
+
+        self._n_verts = len(self._vertices)
+        self._n_faces = len(faces)
+
+    def _setup_bones(self, rest_landmarks: np.ndarray) -> None:
+        """Compute bone weights and precompute per-bone vertex lists."""
+        self._rest_landmarks = rest_landmarks
+        self._bone_idx, self._bone_weights = _compute_bone_weights(
+            self._vertices, rest_landmarks, self.model_height)
+
         self._bone_vert_lists: list[list[np.ndarray]] = []
         for b in range(N_BONES):
             per_k = []
@@ -258,33 +334,35 @@ class AvatarMesh:
                 per_k.append(np.where(self._bone_idx[:, k] == b)[0])
             self._bone_vert_lists.append(per_k)
 
-        # Rest-pose bone directions and anchors.
         self._rest_dirs = np.zeros((N_BONES, 3), dtype=np.float32)
         self._rest_anchors = np.zeros((N_BONES, 3), dtype=np.float32)
         for b, (lm_a, lm_b) in enumerate(SKEL_BONES):
-            a = self._rest_landmarks[lm_a]
-            d = self._rest_landmarks[lm_b] - a
+            a = rest_landmarks[lm_a]
+            d = rest_landmarks[lm_b] - a
             length = np.linalg.norm(d)
             self._rest_anchors[b] = a
             self._rest_dirs[b] = d / max(length, 1e-6)
 
-        # Deformed buffers (updated by skin()).
-        self._skinned_verts = self._vertices.copy()
-        self._skinned_norms = self._normals.copy()
+    def calibrate(self, gl_landmarks_33: np.ndarray,
+                  hip_center: np.ndarray, scale: float) -> None:
+        """Recalculate bone weights from a captured T-pose.
 
-        self._n_verts = len(self._vertices)
-        self._n_faces = len(faces)
+        gl_landmarks_33: (33, 3) landmarks in GL space from the T-pose capture.
+        hip_center: GL-space hip center used for coordinate conversion.
+        scale: model-to-GL scale factor.
+        """
+        model_hip = np.array([self.model_center[0], self.hip_y, self.model_center[2]])
+        tracked_model = (gl_landmarks_33 - hip_center) / scale + model_hip
+        rest_35 = _add_virtual_landmarks(tracked_model)
+        self._setup_bones(rest_35)
+        self._calibrated = True
+        print("T-pose calibration complete")
 
     def skin(self, tracked_landmarks: np.ndarray) -> None:
-        """Deform vertices via LBS to match tracked landmarks in model space.
-
-        tracked_landmarks: (33, 3) or (35, 3) array. If 33, virtual landmarks
-        are computed automatically.
-        """
+        """Deform vertices via LBS to match tracked landmarks in model space."""
         if len(tracked_landmarks) == 33:
             tracked_landmarks = _add_virtual_landmarks(tracked_landmarks)
 
-        # Per-bone rotation and offset: T(v) = v @ R.T + offset
         Rs = np.zeros((N_BONES, 3, 3), dtype=np.float32)
         offsets = np.zeros((N_BONES, 3), dtype=np.float32)
 
@@ -301,7 +379,6 @@ class AvatarMesh:
             Rs[b] = R
             offsets[b] = track_a - R @ self._rest_anchors[b]
 
-        # Apply weighted bone transforms.
         result = np.zeros_like(self._vertices)
         norm_result = np.zeros_like(self._normals)
 
@@ -316,7 +393,6 @@ class AvatarMesh:
                 result[idx] += w * (self._vertices[idx] @ R_T + off)
                 norm_result[idx] += w * (self._normals[idx] @ R_T)
 
-        # Re-normalize normals.
         norms = np.linalg.norm(norm_result, axis=1, keepdims=True)
         norms[norms < 1e-8] = 1.0
         self._skinned_norms = (norm_result / norms).astype(np.float32)

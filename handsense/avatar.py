@@ -236,6 +236,13 @@ class AvatarRenderer:
             except Exception as exc:
                 print(f"mesh load failed ({exc}), using geometric fallback")
 
+        # T-pose calibration state.
+        self._calibration_frames: list[np.ndarray] = []
+        self._calibration_done = self._mesh is None
+        self._calibration_countdown = 0.0
+        self._CALIBRATION_HOLD = 2.0   # seconds to hold T-pose
+        self._CALIBRATION_FRAMES = 30  # frames to average
+
         self._setup_gl()
 
     def _setup_gl(self) -> None:
@@ -308,14 +315,13 @@ class AvatarRenderer:
 
     # ── Mesh-based body rendering ──────────────────────────────────────
 
-    def _draw_mesh_body(self, obs: HolisticObservation) -> None:
-        """Render the articulated mesh via linear blend skinning."""
-        gl_lm = [_mp_to_gl(*pt) for pt in obs.pose_world]
-
-        lh = np.array(gl_lm[LEFT_HIP])
-        rh = np.array(gl_lm[RIGHT_HIP])
-        ls = np.array(gl_lm[LEFT_SHOULDER])
-        rs = np.array(gl_lm[RIGHT_SHOULDER])
+    def _gl_to_model(self, gl_landmarks: np.ndarray
+                     ) -> tuple[np.ndarray, np.ndarray, float]:
+        """Convert GL-space landmarks to model space. Returns (model_lm, hip_center, scale)."""
+        lh = gl_landmarks[LEFT_HIP]
+        rh = gl_landmarks[RIGHT_HIP]
+        ls = gl_landmarks[LEFT_SHOULDER]
+        rs = gl_landmarks[RIGHT_SHOULDER]
 
         hip_center = (lh + rh) / 2
         shoulder_center = (ls + rs) / 2
@@ -324,17 +330,115 @@ class AvatarRenderer:
         model_torso = self._mesh.model_height * 0.35
         scale = torso_len / max(model_torso, 0.01)
 
-        # Convert GL landmarks → model space for skinning.
-        gl_landmarks = np.array(gl_lm, dtype=np.float32)
         model_hip = np.array([self._mesh.model_center[0],
                               self._mesh.hip_y,
                               self._mesh.model_center[2]])
         tracked_model = (gl_landmarks - hip_center) / scale + model_hip
+        return tracked_model, hip_center, scale
 
-        # Deform mesh (LBS).
+    def _try_calibrate(self, obs: HolisticObservation) -> None:
+        """Collect T-pose frames and calibrate when enough are gathered."""
+        import time
+        from .mesh_loader import is_tpose
+
+        gl_lm = np.array([_mp_to_gl(*pt) for pt in obs.pose_world], dtype=np.float32)
+
+        if is_tpose(gl_lm):
+            if self._calibration_countdown == 0:
+                self._calibration_countdown = time.time()
+            elapsed = time.time() - self._calibration_countdown
+            self._calibration_frames.append(gl_lm)
+
+            if len(self._calibration_frames) >= self._CALIBRATION_FRAMES:
+                avg_lm = np.mean(self._calibration_frames, axis=0).astype(np.float32)
+                _, hip_center, scale = self._gl_to_model(avg_lm)
+                self._mesh.calibrate(avg_lm, hip_center, scale)
+                self._calibration_done = True
+                self._calibration_frames.clear()
+                print("calibration complete — tracking active")
+        else:
+            self._calibration_frames.clear()
+            self._calibration_countdown = 0.0
+
+    def _draw_calibration_hud(self, obs: HolisticObservation | None) -> None:
+        """Show T-pose calibration instructions."""
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, self.width, 0, self.height, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_LIGHTING)
+
+        # Dark overlay.
+        glColor4f(0, 0, 0, 0.5)
+        glBegin(GL_QUADS)
+        glVertex2f(0, 0); glVertex2f(self.width, 0)
+        glVertex2f(self.width, self.height); glVertex2f(0, self.height)
+        glEnd()
+
+        # Status indicator.
+        n = len(self._calibration_frames)
+        progress = n / self._CALIBRATION_FRAMES if self._CALIBRATION_FRAMES > 0 else 0
+        bar_w = self.width * 0.5
+        bar_h = 12
+        bx = (self.width - bar_w) / 2
+        by = self.height * 0.4
+
+        # Progress bar background.
+        glColor4f(0.2, 0.2, 0.25, 0.8)
+        glBegin(GL_QUADS)
+        glVertex2f(bx, by); glVertex2f(bx + bar_w, by)
+        glVertex2f(bx + bar_w, by + bar_h); glVertex2f(bx, by + bar_h)
+        glEnd()
+
+        # Progress bar fill.
+        if progress > 0:
+            glColor4f(0.3, 0.9, 0.4, 0.9)
+            glBegin(GL_QUADS)
+            glVertex2f(bx, by); glVertex2f(bx + bar_w * progress, by)
+            glVertex2f(bx + bar_w * progress, by + bar_h); glVertex2f(bx, by + bar_h)
+            glEnd()
+
+        # T-pose icon: simple stick figure with arms out.
+        cx, cy = self.width / 2, self.height * 0.6
+        glColor4f(0.9, 0.9, 0.9, 0.8)
+        glLineWidth(3)
+        glBegin(GL_LINES)
+        # Body
+        glVertex2f(cx, cy - 40); glVertex2f(cx, cy + 30)
+        # Arms
+        glVertex2f(cx - 50, cy - 20); glVertex2f(cx + 50, cy - 20)
+        # Legs
+        glVertex2f(cx, cy + 30); glVertex2f(cx - 20, cy + 60)
+        glVertex2f(cx, cy + 30); glVertex2f(cx + 20, cy + 60)
+        glEnd()
+        # Head
+        glPointSize(14)
+        glBegin(GL_POINTS)
+        glVertex2f(cx, cy - 50)
+        glEnd()
+
+        glEnable(GL_DEPTH_TEST)
+        glEnable(GL_LIGHTING)
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+        glPopMatrix()
+
+    def _draw_mesh_body(self, obs: HolisticObservation) -> None:
+        """Render the articulated mesh via linear blend skinning."""
+        gl_lm = np.array([_mp_to_gl(*pt) for pt in obs.pose_world], dtype=np.float32)
+        tracked_model, hip_center, scale = self._gl_to_model(gl_lm)
+
         self._mesh.skin(tracked_model)
 
-        # Place the deformed mesh in GL space (scale + translate only).
+        model_hip = np.array([self._mesh.model_center[0],
+                              self._mesh.hip_y,
+                              self._mesh.model_center[2]])
+
         glPushMatrix()
         glTranslatef(*hip_center)
         glScalef(scale, scale, scale)
@@ -346,9 +450,10 @@ class AvatarRenderer:
 
         glPopMatrix()
 
-        self._draw_head_features(gl_lm, obs)
+        gl_lm_list = [tuple(gl_lm[i]) for i in range(33)]
+        self._draw_head_features(gl_lm_list, obs)
         if obs.has_left_hand or obs.has_right_hand:
-            self._draw_hands(obs, gl_lm)
+            self._draw_hands(obs, gl_lm_list)
 
     # ── Geometric body rendering (fallback) ────────────────────────────
 
@@ -659,13 +764,22 @@ class AvatarRenderer:
         self._set_projection()
         self._set_camera()
         self._draw_ground()
+
         if obs is not None:
-            if self._mesh is not None:
+            if self._mesh is not None and not self._calibration_done:
+                self._try_calibrate(obs)
+                self._draw_geometric_body(obs)
+            elif self._mesh is not None:
                 self._draw_mesh_body(obs)
             else:
                 self._draw_geometric_body(obs)
+
         if camera_frame is not None:
             self._draw_pip(camera_frame)
+
+        if not self._calibration_done:
+            self._draw_calibration_hud(obs)
+
         self._draw_hud(obs)
         pygame.display.flip()
 
