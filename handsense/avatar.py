@@ -231,8 +231,8 @@ class AvatarRenderer:
             try:
                 from .mesh_loader import AvatarMesh
                 self._mesh = AvatarMesh(model_path)
-                print(f"loaded avatar mesh ({self._mesh._total_verts} verts, "
-                      f"{self._mesh._total_faces} faces)")
+                print(f"loaded avatar mesh ({self._mesh._n_verts} verts, "
+                      f"{self._mesh._n_faces} faces)")
             except Exception as exc:
                 print(f"mesh load failed ({exc}), using geometric fallback")
 
@@ -309,44 +309,64 @@ class AvatarRenderer:
     # ── Mesh-based body rendering ──────────────────────────────────────
 
     def _draw_mesh_body(self, obs: HolisticObservation) -> None:
-        """Render the loaded 3D mesh, deformed per-vertex from landmarks."""
+        """Render the mesh as one intact piece with a global body transform."""
         gl_lm = [_mp_to_gl(*pt) for pt in obs.pose_world]
 
-        # Compute body scale and position.
+        # Body landmarks.
         lh = np.array(gl_lm[LEFT_HIP])
         rh = np.array(gl_lm[RIGHT_HIP])
         ls = np.array(gl_lm[LEFT_SHOULDER])
         rs = np.array(gl_lm[RIGHT_SHOULDER])
+
         hip_center = (lh + rh) / 2
         shoulder_center = (ls + rs) / 2
-        torso_len = np.linalg.norm(shoulder_center - hip_center)
+
+        # Scale: match tracked torso length to model torso length.
+        torso_len = float(np.linalg.norm(shoulder_center - hip_center))
         model_torso = self._mesh.model_height * 0.35
-        scale = max(torso_len / max(model_torso, 0.01), 0.1)
+        scale = torso_len / max(model_torso, 0.01)
 
-        # Convert all 33 tracked landmarks from GL space to model space.
-        gl_landmarks = np.array(gl_lm, dtype=np.float32)  # (33, 3)
-        model_hip_y = self._mesh.bounds_min[1] + self._mesh.model_height * 0.47
-        model_hip = np.array([self._mesh.model_center[0], model_hip_y,
-                              self._mesh.model_center[2]])
+        # Facing direction: perpendicular to shoulder line, projected on XZ.
+        right = rs - ls
+        forward = np.array([-right[2], 0.0, right[0]])
+        fwd_len = np.linalg.norm(forward)
+        if fwd_len > 1e-6:
+            forward /= fwd_len
+        yaw = float(np.degrees(np.arctan2(forward[0], forward[2])))
 
-        # tracked_model = (gl_pos - hip_center) / scale + model_hip
-        tracked_model = (gl_landmarks - hip_center[None, :]) / scale + model_hip[None, :]
+        # Torso lean: angle of hip->shoulder vector relative to vertical.
+        spine = shoulder_center - hip_center
+        spine_len = max(np.linalg.norm(spine), 1e-6)
+        lean_x = float(np.degrees(np.arcsin(np.clip(spine[2] / spine_len, -1, 1))))
+        lean_z = float(np.degrees(np.arcsin(np.clip(-spine[0] / spine_len, -1, 1))))
 
-        # Deform the mesh.
-        self._mesh.deform(tracked_model)
-
-        # Render.
         glPushMatrix()
-        glTranslatef(*hip_center)
-        glScalef(scale, scale, scale)
-        glTranslatef(-model_hip[0], -model_hip[1], -model_hip[2])
 
-        glColor4f(0.65, 0.65, 0.70, 1.0)
+        # 1. Translate so model hip is at tracked hip position.
+        glTranslatef(*hip_center)
+
+        # 2. Rotate to face same direction as the user.
+        glRotatef(yaw, 0, 1, 0)
+
+        # 3. Apply body lean.
+        glRotatef(lean_x, 1, 0, 0)
+        glRotatef(lean_z, 0, 0, 1)
+
+        # 4. Scale to match body size.
+        glScalef(scale, scale, scale)
+
+        # 5. Offset so model's hip point is at origin.
+        glTranslatef(-self._mesh.model_center[0],
+                      -self._mesh.hip_y,
+                      -self._mesh.model_center[2])
+
+        if self._mesh._draw_colors is None:
+            glColor4f(0.65, 0.65, 0.70, 1.0)
         self._mesh.draw()
 
         glPopMatrix()
 
-        # Face features and fingers on top of the mesh.
+        # Face features and finger overlays.
         self._draw_head_features(gl_lm, obs)
         if obs.has_left_hand or obs.has_right_hand:
             self._draw_hands(obs, gl_lm)
