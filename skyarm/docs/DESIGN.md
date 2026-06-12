@@ -26,11 +26,17 @@ full horizontal reach** with >=1.5x margin on every load path.
 
 | segment | mm |
 |---|---|
-| ceiling plane → shoulder axis (carriage + yaw stack) | 200 |
-| shoulder → elbow (upper arm) | 660 |
+| ceiling plane → shoulder axis (carriage + yaw stack) | 215 |
+| shoulder → elbow (upper arm) | 645 |
 | elbow → wrist (forearm) | 500 |
 | wrist → gripper tip | 164 |
 | **total** | **1524 = 5 ft** |
+
+The shoulder is also offset 235 mm sideways from the yaw axis (like a
+UR arm): the link root sweeps a ~75 mm cylinder around the shoulder
+axis, and the yaw module, its bracket, and the shoulder gearbox all
+have to live outside that swept zone.  The IK compensates the offset
+automatically.
 
 In a 2.7 m room the tip reaches down to ~1.18 m above the floor when
 hanging straight down, and reaches *the floor* and beyond when the
@@ -131,6 +137,8 @@ Design errors these layers caught and the fixes now in the spec/CAD:
 | analysis | 2060 bridge deflects several mm | C-beam 4080 bridge (1.3 mm) |
 | dynamics | wrist gearbox saturated during moves | 11:1 -> 13:1 |
 | interference | tubes collide folding past 105 deg | output clamps offset 30 mm past the joint, travel limits set to measured values (elbow ±105, wrist ±95) |
+| analysis | yaw output bearings SF 0.82 — the whole arm's moment hangs from the yaw journal | 2× 6818 wide-thin pair (SF 2.15) |
+| interference | no collision-free route from yaw output to shoulder through the link's swing zone | shoulder offset 235 mm from the yaw axis (UR-style), yoke bracket with twin side rails around the gearbox |
 
 ## Iterating
 

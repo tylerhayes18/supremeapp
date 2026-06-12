@@ -218,30 +218,49 @@ def machine(pose: kin.Pose | None = None, include_gantry: bool = True) -> list:
             _place(out, "gantry-motor", mo, f, (0, 0, 0), C_MOTOR,
                    (np.array(zdir, float) * -300).tolist())
 
-    # ---- yaw module under the carriage (offset -a so the big shoulder
-    # gearbox below clears it) ------------------------------------------
-    yaw_org = np.array([cx, cy, CEIL - 54.0]) - a * 40.0
-    f_yaw = _basis(yaw_org, (0, 0, -1), (1, 0, 0))
+    # ---- yaw module under the carriage; the shoulder hangs E_OFF to the
+    # side so the bracket and gearboxes all clear the link's swing zone
+    f_yaw = _basis((cx, cy, CEIL - 54.0), (0, 0, -1), (1, 0, 0))
     _gearbox(out, "yaw", spec.CYCLO_YAW, f_yaw)
 
-    # column: yaw output -> shoulder gearbox housing band
-    d_face_sh = (cad_parts.W_OUT["shoulder"]
-                 + cycloidal.output_face_z(spec.CYCLO_BIG))
-    col_y = cad_parts.W_OUT["shoulder"] + cycloidal.output_face_z(
-        spec.CYCLO_BIG) / 2
-    col_top, col_bot = CEIL - 122.0, p_sh[2] + spec.CYCLO_BIG.housing_od / 2 + 4
-    m = _box((100, 170, col_top - col_bot))
-    col_at = p_sh + a * (col_y - 35.0)
-    m.apply_translation((col_at[0], col_at[1], (col_top + col_bot) / 2))
-    out.append(Placed("yaw-column", m, C_PRINT, np.array([0, 0, 0.0])))
+    # Yoke bracket from the yaw output to the shoulder gearbox: a pad
+    # under the yaw output face, TWO side rails that pass OUTSIDE the
+    # shoulder gearbox cylinder and the link's swing zone, then cheeks +
+    # tabs bolting to the (stationary) gearbox cover face.
+    e_off = spec.YAW_SHOULDER_OFFSET_MM
+    yaw_face_z = CEIL - 56.0 - cycloidal.output_face_z(spec.CYCLO_YAW)
+    x_dir = np.cross(a, (0, 0, 1.0))
+    sh_r = spec.CYCLO_BIG.housing_od / 2
 
-    # ---- arm joints (gearboxes output toward the arm plane) -------------
-    for label, cs, joint, t_out in (
-            ("shoulder", spec.CYCLO_BIG, p_sh, t_up),
-            ("elbow", spec.CYCLO_MID, p_el, t_fo),
-            ("wrist", spec.CYCLO_SMALL, p_wr, t_ti)):
+    def put(name, extents, center):
+        m = _box(extents)
+        m.apply_translation(center)
+        out.append(Placed(name, m, C_PRINT, np.array([0, 0, 0.0])))
+
+    pad_c = p_sh + a * e_off
+    put("yaw-column", (2 * sh_r + 52, 60, 14),
+        (pad_c[0], pad_c[1], yaw_face_z - 7.0))
+    for sx in (-1, 1):
+        # rails stop at y=66, outside the link's swing/mount band
+        rail_c = p_sh + a * (66 + (e_off + 30 - 66) / 2) + \
+            x_dir * sx * (sh_r + 16)
+        put("yaw-column", (20, e_off + 30 - 66, 14),
+            (rail_c[0], rail_c[1], yaw_face_z - 7.0))
+        cheek_c = p_sh + a * 72.0 + x_dir * sx * (sh_r + 16)
+        put("yaw-column", (20, 14, yaw_face_z - 14.0 - (p_sh[2] - 40.0)),
+            (cheek_c[0], cheek_c[1], (yaw_face_z - 14.0 + p_sh[2] - 40.0) / 2))
+        tab_c = p_sh + a * 72.0 + x_dir * sx * (sh_r - 4)
+        put("yaw-column", (28, 14, 36), (tab_c[0], tab_c[1], p_sh[2]))
+
+    # ---- arm joints (gearboxes output toward the arm plane).  Housings
+    # are fixed to the PROXIMAL side: the shoulder box stays aligned to
+    # the bracket, elbow/wrist boxes to the incoming link --------------
+    for label, cs, joint, x_fix in (
+            ("shoulder", spec.CYCLO_BIG, p_sh, np.array([0.0, 0.0, -1.0])),
+            ("elbow", spec.CYCLO_MID, p_el, t_up),
+            ("wrist", spec.CYCLO_SMALL, p_wr, t_fo)):
         d_face = (cad_parts.W_OUT[label] + cycloidal.output_face_z(cs))
-        f = _basis(joint + a * d_face, -a, t_out)
+        f = _basis(joint + a * d_face, -a, x_fix)
         _gearbox(out, label, cs, f)
 
     # ---- printed link beams (local: z = beam axis, y = -a) --------------

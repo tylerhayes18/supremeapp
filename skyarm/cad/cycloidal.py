@@ -43,9 +43,14 @@ BEARINGS = {
     "cyclo-mid": dict(cam_od=25.0, disc_bore=32.0,      # 6705ZZ cams
                       out_id=50.0, out_od=65.0, out_w=7.0,   # 2x 6810ZZ
                       spacing=14.0),
-    "cyclo-yaw": dict(cam_od=25.0, disc_bore=32.0,
-                      out_id=50.0, out_od=65.0, out_w=7.0,
-                      spacing=14.0),
+    "cyclo-yaw": dict(cam_od=25.0, disc_bore=32.0,      # 6705ZZ cams
+                      # 2x 6818: the WHOLE arm's moment hangs from this
+                      # journal (analysis.py found 6810s at SF 0.82).
+                      # Wide-thin bearings keep the stack short enough
+                      # that the yaw output plane clears the shoulder
+                      # motor below it.
+                      out_id=90.0, out_od=115.0, out_w=13.0,
+                      spacing=27.0),
     "cyclo-small": dict(cam_od=25.0, disc_bore=32.0,
                         out_id=30.0, out_od=42.0, out_w=7.0,  # 2x 6806ZZ
                         spacing=10.0),

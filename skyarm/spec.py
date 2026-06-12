@@ -46,8 +46,15 @@ MM_PER_FT = 304.8
 
 TOTAL_REACH_MM = 5 * MM_PER_FT  # 1524.0
 
-CARRIAGE_STACK_MM = 200.0   # ceiling plane -> shoulder pitch axis
-UPPER_ARM_MM = 660.0        # shoulder axis -> elbow axis
+CARRIAGE_STACK_MM = 215.0   # ceiling plane -> shoulder pitch axis
+# (215, not 200: drops the shoulder so the NEMA 34 clears the yaw
+# output plane; the upper arm gives back the 15 mm to keep 5 ft total)
+# The shoulder is offset sideways from the yaw axis (like most 6-axis
+# arms): the upper link's root sweeps a ~75 mm cylinder around the
+# shoulder axis, and the yaw module shell + shoulder gearbox must both
+# live outside it AND clear each other in plan.
+YAW_SHOULDER_OFFSET_MM = 235.0
+UPPER_ARM_MM = 645.0        # shoulder axis -> elbow axis
 FOREARM_MM = 500.0          # elbow axis -> wrist pitch axis
 WRIST_TO_TIP_MM = 164.0     # wrist pitch axis -> gripper tip (jaws closed)
 

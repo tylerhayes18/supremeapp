@@ -30,7 +30,9 @@ SHEAR_PETG_CF = 30e6
 VWHEEL_RATED_N = 620.0               # Xtreme solid V wheel radial rating
 BELT_RATED_N = 250.0                 # GT3 15 mm steel-core working tension
 BRG_6815_C0_N = 8450.0               # shoulder output pair, static each
-BRG_6810_C0_N = 6800.0               # elbow/yaw output pair
+BRG_6810_C0_N = 6800.0               # elbow output pair
+BRG_C0_BY_OD = {42.0: 2900.0, 65.0: 6800.0, 95.0: 8450.0,
+                115.0: 11800.0}      # static rating by bearing OD
 MGN15_C0_N = 16800.0                 # MGN15H block static rating
 LAG_SCREW_SHEAR_N = 2200.0           # 6.5 mm lag in joist, per screw
 
@@ -184,6 +186,23 @@ def check_output_bearing() -> Check:
                  BRG_6815_C0_N, "N", "worst of 2x 6815ZZ, static rating")
 
 
+def check_yaw_bearing() -> Check:
+    """The ENTIRE arm hangs from the yaw output journal — its bearing
+    pair sees the same arm-horizontal moment as the shoulder, plus the
+    full hanging weight.  This is the single most loaded interface in
+    the machine."""
+    from .cad import cycloidal as _c
+    b = _c.BEARINGS["cyclo-yaw"]
+    cap = BRG_C0_BY_OD[b["out_od"]]
+    span = (b["out_w"] + b["spacing"]) / 1000.0
+    radial = _arm_weight_n() + G * 3.0          # + yaw-side structure
+    # arm moment + the hanging weight on the yaw-shoulder offset lever
+    m = _shoulder_moment_nm() + radial * spec.YAW_SHOULDER_OFFSET_MM / 1000.0
+    worst = m / span + radial / 2
+    return Check("yaw output bearing load", worst, cap, "N",
+                 "whole-arm moment + offset lever through the yaw journal")
+
+
 def check_carriage_rail() -> Check:
     """Y carriage rides 2x MGN15H blocks 150 mm apart (V wheels failed
     the 15 lb overturning-moment check); worst block load = moment
@@ -224,8 +243,8 @@ def check_ceiling_anchors() -> Check:
 ALL_CHECKS = (check_beam_stress, check_tip_deflection, check_flange_bolts,
               check_bridge_deflection, check_rail_deflection,
               check_ring_pin_shear, check_output_pin_bending,
-              check_output_bearing, check_carriage_rail, check_truck_wheels,
-              check_belt_tension, check_ceiling_anchors)
+              check_output_bearing, check_yaw_bearing, check_carriage_rail,
+              check_truck_wheels, check_belt_tension, check_ceiling_anchors)
 
 # minimum safety factors by check (structure 2.0, consumables 1.3)
 MIN_SF = {"gantry belt working tension": 1.3,

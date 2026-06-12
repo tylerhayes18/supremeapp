@@ -27,10 +27,12 @@ from dataclasses import dataclass, replace
 
 from .spec import (ARM_REACH_MM, CARRIAGE_STACK_MM, FOREARM_MM, ROOM,
                    SHOULDER, ELBOW, WRIST_PITCH, UPPER_ARM_MM,
-                   WRIST_TO_TIP_MM, X_TRAVEL_MM, Y_TRAVEL_MM)
+                   WRIST_TO_TIP_MM, X_TRAVEL_MM, Y_TRAVEL_MM,
+                   YAW_SHOULDER_OFFSET_MM)
 
 CEILING_MM = ROOM["ceiling_mm"]
 SHOULDER_Z_MM = CEILING_MM - CARRIAGE_STACK_MM
+E_OFF = YAW_SHOULDER_OFFSET_MM      # shoulder offset from the yaw axis
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,9 @@ def _dir(yaw_rad: float, phi_rad: float) -> tuple:
 
 def forward(pose: Pose) -> Chain:
     yaw = math.radians(pose.yaw)
-    p0 = (pose.gx, pose.gy, SHOULDER_Z_MM)
+    # shoulder sits E_OFF to the side of the yaw axis (rotates with yaw)
+    p0 = (pose.gx + E_OFF * math.sin(yaw),
+          pose.gy - E_OFF * math.cos(yaw), SHOULDER_Z_MM)
 
     a2 = math.radians(pose.shoulder)
     a3 = a2 + math.radians(pose.elbow)
@@ -110,14 +114,24 @@ def _solve(target: tuple, psi_deg: float, elbow_up: bool,
            gantry: tuple | None) -> Pose:
     tx, ty, tz = target
     if gantry is None:
+        # park the yaw axis so the (offset) shoulder lands over the
+        # target at yaw = 0 — the stiffest configuration
         gx = _clamp(tx, 0.0, X_TRAVEL_MM)
-        gy = _clamp(ty, 0.0, Y_TRAVEL_MM)
+        gy = _clamp(ty + E_OFF, 0.0, Y_TRAVEL_MM)
     else:
         gx, gy = gantry
 
+    # horizontal solve with the lateral shoulder offset:
+    # target - gantry = E_OFF * u(yaw) + r * t(yaw),  u perpendicular t
     dx, dy = tx - gx, ty - gy
-    r = math.hypot(dx, dy)
-    yaw = math.degrees(math.atan2(dy, dx)) if r > 1e-9 else 0.0
+    v = math.hypot(dx, dy)
+    if v < E_OFF - 1e-9:
+        raise Unreachable(
+            f"target {target} horizontally inside the {E_OFF:.0f} mm "
+            "yaw-shoulder offset circle of the pinned gantry")
+    r = math.sqrt(max(v * v - E_OFF * E_OFF, 0.0))
+    yaw = math.degrees(math.atan2(dy, dx) + math.atan2(E_OFF, r)) \
+        if v > 1e-9 else 0.0
     depth = SHOULDER_Z_MM - tz          # distance below shoulder, +down
 
     # Wrist point: back off from the tip along the approach direction.

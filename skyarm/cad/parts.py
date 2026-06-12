@@ -218,7 +218,7 @@ def _motor_plate(joint: str, cs, beam_width) -> trimesh.Trimesh:
 
 UB, FB = spec.UPPER_BEAM, spec.FOREARM_BEAM
 # segment splits keep every part (incl. mounts) inside the print volume
-UPPER_SEGS = (150.0, 180.0, 180.0, 150.0)  # = UPPER_ARM_MM, 2 identical mids
+UPPER_SEGS = (150.0, 180.0, 180.0, 135.0)  # = UPPER_ARM_MM, 2 identical mids
 FOREARM_SEGS = (160.0, 180.0, 160.0)       # = FOREARM_MM
 
 

@@ -41,22 +41,32 @@ class TestSpec(unittest.TestCase):
 
 class TestForward(unittest.TestCase):
     def test_straight_down_reaches_five_feet_below_ceiling(self):
+        # the shoulder (and tip) hang E_OFF to the side of the yaw axis
         pose = kin.Pose(gx=1000, gy=1000)
         chain = kin.forward(pose)
         self.assertAlmostEqual(chain.tip[0], 1000.0)
-        self.assertAlmostEqual(chain.tip[1], 1000.0)
+        self.assertAlmostEqual(chain.tip[1], 1000.0 - kin.E_OFF)
         self.assertAlmostEqual(chain.tip[2], kin.CEILING_MM - 1524.0)
+
+    def test_ik_compensates_yaw_offset_for_vertical_reach(self):
+        target = (1000.0, 1000.0, kin.CEILING_MM - 1500.0)
+        pose = kin.inverse(target)
+        self.assertAlmostEqual(pose.gy, 1000.0 + kin.E_OFF)
+        tip = kin.forward(pose).tip
+        for got, want in zip(tip, target):
+            self.assertAlmostEqual(got, want, delta=1e-6)
 
     def test_horizontal_arm(self):
         pose = kin.Pose(gx=500, gy=500, yaw=0, shoulder=90)
         chain = kin.forward(pose)
         self.assertAlmostEqual(chain.tip[0], 500 + spec.ARM_REACH_MM, places=6)
+        self.assertAlmostEqual(chain.tip[1], 500 - kin.E_OFF, places=6)
         self.assertAlmostEqual(chain.tip[2], kin.SHOULDER_Z_MM, places=6)
 
     def test_yaw_rotates_plane(self):
         pose = kin.Pose(gx=0, gy=0, yaw=90, shoulder=90)
         chain = kin.forward(pose)
-        self.assertAlmostEqual(chain.tip[0], 0.0, places=6)
+        self.assertAlmostEqual(chain.tip[0], kin.E_OFF, places=6)
         self.assertAlmostEqual(chain.tip[1], spec.ARM_REACH_MM, places=6)
 
 
@@ -69,13 +79,16 @@ class TestInverse(unittest.TestCase):
             gy = rng.uniform(200, kin.Y_TRAVEL_MM - 200)
             # targets inside a comfortable cone below the carriage
             ang = rng.uniform(0, 2 * math.pi)
-            rad = rng.uniform(0, 700)
+            # pinned gantry: targets must sit outside the yaw-shoulder
+            # offset circle; the planar arm radius is then reduced
+            rad = rng.uniform(kin.E_OFF + 30, 760)
             depth = rng.uniform(400, 1300)
             target = (gx + rad * math.cos(ang), gy + rad * math.sin(ang),
                       kin.SHOULDER_Z_MM - depth)
+            r_eff = math.sqrt(rad * rad - kin.E_OFF ** 2)
             # with a vertical approach the wrist sits 164 mm above the tip;
             # close-in targets need an elbow fold past the travel limit
-            wrist_d = math.hypot(rad, depth - spec.WRIST_TO_TIP_MM)
+            wrist_d = math.hypot(r_eff, depth - spec.WRIST_TO_TIP_MM)
             if wrist_d > 0.98 * (spec.UPPER_ARM_MM + spec.FOREARM_MM):
                 continue
             if wrist_d < 740.0:    # |elbow| > ~105 deg

@@ -35,6 +35,7 @@ before the shoulder saturates).
 | 13 | 6905ZZ bearing (25×42×9) | 2 | cyclo-big cam lobes | 8 |
 | 14 | 6705ZZ thin bearing (25×32×4) | 6 | mid/yaw/small cam lobes | 18 |
 | 15 | 6815ZZ bearing (75×95×10) | 2 | shoulder output, spaced pair reacts 169 Nm | 24 |
+| 15b | 6818ZZ bearing (90×115×13) | 2 | yaw output — the whole arm's moment hangs here | 34 |
 | 16 | 6810ZZ bearing (50×65×7) | 4 | mid/yaw output pairs | 28 |
 | 17 | 6806ZZ bearing (30×42×7) | 4 | wrist output pair + roll | 16 |
 | 18 | GT3 belt closed loop 300 mm + 16T pulley 8 mm | 1 | wrist roll 5:1 stage | 10 |

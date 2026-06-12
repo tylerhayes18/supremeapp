@@ -110,8 +110,9 @@ def build_urdf(payload_kg: float = spec.PAYLOAD_KG) -> str:
     u.append(joint("yaw", "revolute", "carriage", "upper_pre", "0 0 0",
                    "0 0 1", -math.pi, math.pi))
     u.append(_link("upper_pre", 0.05, (0.04, 0.04, 0.04)))
+    e_off = spec.YAW_SHOULDER_OFFSET_MM / 1000.0
     u.append(joint("shoulder", "revolute", "upper_pre", "upper",
-                   f"0 0 {-stack}", "0 1 0",
+                   f"0 {-e_off} {-stack}", "0 1 0",
                    math.radians(spec.SHOULDER.travel_deg[0]),
                    math.radians(spec.SHOULDER.travel_deg[1])))
     u.append(joint("elbow", "revolute", "upper", "forearm", f"0 0 {-L1}",
@@ -194,16 +195,16 @@ class Dynamics:
                                             (0, 0, 0, 1))
         return tip[2]
 
-    # closed-loop steppers act as stiff position servos; model them as
-    # gravity-feedforward + PD, torque-clamped to the gearbox capacity.
-    # kd must satisfy kd/I < timestep rate or the discrete loop chatters
-    # (the wrist, with ~0.013 kg.m^2 reflected inertia, found that out).
-    GAINS = {"gx": (60000.0, 6000.0), "gy": (50000.0, 5000.0),
-             "yaw": (900.0, 90.0), "shoulder": (4000.0, 400.0),
-             "elbow": (1500.0, 150.0), "wrist": (120.0, 5.0)}
-
     def run(self, target_fn, seconds) -> SimResult:
-        """Step with feedforward+PD control clamped to gearbox capacity."""
+        """Step with constraint-based position control, torque-clamped to
+        the gearbox capacity.
+
+        Closed-loop steppers are position-stiff (current-controlled with
+        encoder feedback and effectively integral action) until they run
+        out of torque; PyBullet's POSITION_CONTROL motor model is exactly
+        that — it solves for the torque needed to hold the target and
+        clamps it at ``force``.  If gravity + dynamics exceed capacity
+        the joint sags/lags, which is the failure mode under test."""
         pb = self.pb
         steps = int(seconds * 480)
         max_err = {n: 0.0 for n in JOINTS}
@@ -218,35 +219,27 @@ class Dynamics:
             t = s / 480.0
             targets = target_fn(t)
             targets_prev = target_fn(max(t - dt, 0.0))
-            tvel = {n: (targets[n] - targets_prev[n]) / dt for n in JOINTS}
-            q, qd = [], []
-            for j in idx:
-                st = pb.getJointState(self.robot, j, physicsClientId=self.cid)
-                q.append(st[0])
-                qd.append(st[1])
-            # gravity + coriolis compensation (what current-controlled
-            # closed-loop drives effectively deliver)
-            ff = pb.calculateInverseDynamics(self.robot, q, qd,
-                                             [0.0] * len(q),
-                                             physicsClientId=self.cid)
             for k, name in enumerate(JOINTS):
-                kp, kd = self.GAINS[name]
-                err = targets[name] - q[k]
-                tau = ff[k] + kp * err + kd * (tvel[name] - qd[k])
-                cap = CAPACITY[name]
-                tau = max(-cap, min(cap, tau))
-                pb.setJointMotorControl2(self.robot, idx[k],
-                                         pb.TORQUE_CONTROL, force=tau,
-                                         physicsClientId=self.cid)
-                if t > 0.5:           # ignore the initial transient
-                    max_err[name] = max(max_err[name], abs(err))
-                    max_tau[name] = max(max_tau[name], abs(tau))
+                tvel = (targets[name] - targets_prev[name]) / dt
+                pb.setJointMotorControl2(
+                    self.robot, idx[k], pb.POSITION_CONTROL,
+                    targetPosition=targets[name], targetVelocity=tvel,
+                    force=CAPACITY[name], positionGain=0.6, velocityGain=1.0,
+                    physicsClientId=self.cid)
+            pb.stepSimulation(physicsClientId=self.cid)
+            for k, name in enumerate(JOINTS):
+                st = pb.getJointState(self.robot, idx[k],
+                                      physicsClientId=self.cid)
+                err = abs(targets[name] - st[0])
+                tau = abs(st[3])          # applied motor torque
+                if t > 0.5:               # ignore the initial transient
+                    max_err[name] = max(max_err[name], err)
+                    max_tau[name] = max(max_tau[name], tau)
                 if t >= t_steady:
-                    acc_tau[name] += abs(tau)
-                    acc_err[name] += abs(err)
+                    acc_tau[name] += tau
+                    acc_err[name] += err
                     if name == JOINTS[-1]:
                         n_acc += 1
-            pb.stepSimulation(physicsClientId=self.cid)
         n_acc = max(n_acc, 1)
         return SimResult(max_err, max_tau,
                          {n: acc_tau[n] / n_acc for n in JOINTS},
