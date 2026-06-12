@@ -104,10 +104,12 @@ def build(world: World, target=None) -> list:
     return meshes
 
 
-def snapshot(world: World, out_png: str, target=None, size=(1100, 800),
-             eye_dir=(0.8, -1.0, 0.45), real_geometry: bool = False):
-    """Render the world; ``real_geometry=True`` swaps the stick-figure
-    machine for the actual CAD assembly meshes."""
+def image(world: World, target=None, size=(1100, 800),
+          eye_dir=(0.8, -1.0, 0.45), real_geometry: bool = False,
+          fixed_view: bool = False):
+    """Render the world to a PIL image; ``real_geometry=True`` swaps the
+    stick-figure machine for the actual CAD assembly meshes, and
+    ``fixed_view`` keeps the camera still (for animations)."""
     from ..render import render_meshes
     if real_geometry:
         from .. import assembly
@@ -122,12 +124,23 @@ def snapshot(world: World, out_png: str, target=None, size=(1100, 800),
             meshes.append((m.vertices, m.faces, COL_TARGET))
     else:
         meshes = build(world, target)
-    chain = world.chain()
-    off = np.array([150.0, 200.0, 0.0])
-    center = (np.array(chain.shoulder) + np.array(chain.tip)) / 2 + off
-    d = 1.05 * max(spec.ROOM["x_mm"], spec.ROOM["y_mm"])
+    if fixed_view:
+        center = np.array([spec.ROOM["x_mm"] / 2 + 150,
+                           spec.ROOM["y_mm"] / 2 + 200, 1500.0])
+        d = 1.25 * max(spec.ROOM["x_mm"], spec.ROOM["y_mm"])
+    else:
+        chain = world.chain()
+        off = np.array([150.0, 200.0, 0.0])
+        center = (np.array(chain.shoulder) + np.array(chain.tip)) / 2 + off
+        d = 1.05 * max(spec.ROOM["x_mm"], spec.ROOM["y_mm"])
     e = np.asarray(eye_dir, float)
     eye = center + e / np.linalg.norm(e) * d
-    img = render_meshes(meshes, size=size, eye=eye, target=center, fov_deg=38)
+    return render_meshes(meshes, size=size, eye=eye, target=center,
+                         fov_deg=38)
+
+
+def snapshot(world: World, out_png: str, target=None, size=(1100, 800),
+             eye_dir=(0.8, -1.0, 0.45), real_geometry: bool = False):
+    img = image(world, target, size, eye_dir, real_geometry)
     img.save(out_png)
     return out_png

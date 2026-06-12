@@ -46,14 +46,37 @@ def snapshots(base: str, real: bool = False) -> int:
     return 0
 
 
+def animate(path: str, real: bool = False, step_s: float = 0.4,
+            size=(640, 480), fps: float = 7.5) -> str:
+    """Render the demo mission to an animated GIF (headless)."""
+    from . import scene
+    world = demo_mission(World())
+    frames = []
+    while (world.mission or not world.settled) and world.time < 600:
+        frames.append(scene.image(world, size=size, real_geometry=real,
+                                  fixed_view=True))
+        world.run(seconds=step_s)
+    frames.append(scene.image(world, size=size, real_geometry=real,
+                              fixed_view=True))
+    frames[0].save(path, save_all=True, append_images=frames[1:],
+                   duration=int(1000 / fps), loop=0)
+    print(f"{len(frames)} frames -> {path}")
+    return path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--demo", action="store_true")
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--snapshot", metavar="PNG")
+    ap.add_argument("--gif", metavar="GIF",
+                    help="render the demo mission to an animated GIF")
     ap.add_argument("--real", action="store_true",
-                    help="snapshot with real CAD assembly meshes")
+                    help="snapshot/gif with real CAD assembly meshes")
     args = ap.parse_args()
+    if args.gif:
+        animate(args.gif, real=args.real)
+        return 0
     if args.snapshot:
         return snapshots(args.snapshot, real=args.real)
     if args.headless:
