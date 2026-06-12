@@ -4,22 +4,31 @@ Guidance for AI assistants working in this repository.
 
 ## Project
 
-HandSense — a Python webcam app that tracks hands with MediaPipe, classifies
-finger poses into gestures (thumbs up/down, middle finger, peace, OK, etc.),
-and maps them to interactive modes (commands, air-drawing, rock-paper-scissors,
-a pinch-driven dial). Entry point: `python -m handsense`.
+HandSense — a Python webcam app that tracks hands and full body with
+MediaPipe, classifies finger poses into gestures (thumbs up/down, middle
+finger, peace, OK, etc.), and maps them to interactive modes (commands,
+air-drawing, rock-paper-scissors, a pinch-driven dial). A separate body
+tracking mode mirrors your full-body pose onto a 3D humanoid avatar
+rendered in OpenGL.
+
+Entry points: `python -m handsense` (hand gestures), `python -m handsense.body`
+(full-body 3D avatar).
 
 ## Layout
 
 ```
 handsense/
-  main.py       capture loop, key handling, mode switching, top HUD bar
-  detector.py   MediaPipe Tasks HandLandmarker wrapper -> HandObservation
-  gestures.py   pure-Python gesture classification + GestureStabilizer
-  modes.py      CommandMode, DrawMode, RPSMode, DialMode (ALL_MODES registry)
-  hud.py        drawing helpers: panels, outlined text, banners, EventLog, FPS
+  main.py            capture loop, key handling, mode switching, top HUD bar
+  detector.py        MediaPipe Tasks HandLandmarker wrapper -> HandObservation
+  gestures.py        pure-Python gesture classification + GestureStabilizer
+  modes.py           CommandMode, DrawMode, RPSMode, DialMode (ALL_MODES registry)
+  hud.py             drawing helpers: panels, outlined text, banners, EventLog, FPS
+  pose_detector.py   MediaPipe PoseLandmarker wrapper -> PoseObservation (33 body landmarks)
+  avatar.py          OpenGL 3D humanoid renderer (pygame window, spheres + cylinders)
+  body.py            body tracking entry point (camera + 3D avatar side by side)
 tests/
-  test_gestures.py  synthetic-landmark tests for classifier + stabilizer
+  test_gestures.py   synthetic-landmark tests for classifier + stabilizer
+  test_pose.py       coordinate conversion and body-structure validation tests
 ```
 
 ## Key conventions
@@ -49,8 +58,9 @@ tests/
 ## Development
 
 ```bash
-pip install -r requirements.txt          # opencv-python, mediapipe, numpy
-python -m handsense                      # run (needs a webcam + display)
+pip install -r requirements.txt          # opencv-python, mediapipe, numpy, pygame, PyOpenGL
+python -m handsense                      # hand gesture modes (needs webcam + display)
+python -m handsense.body                 # full-body 3D avatar (needs webcam + display + OpenGL)
 python -m unittest discover -s tests -v  # tests run anywhere, no camera/deps
 ```
 

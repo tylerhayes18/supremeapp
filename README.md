@@ -1,9 +1,10 @@
 # HandSense
 
-Live hand-gesture recognition from your webcam. HandSense tracks 21 landmarks
-per hand in real time (MediaPipe), classifies the pose of every finger, and
-turns hand signs into commands — plus a few toys that show off what a camera
-can do.
+Live hand-gesture recognition and full-body motion tracking from your webcam.
+HandSense tracks 21 hand landmarks and 33 body landmarks in real time
+(MediaPipe), classifies finger poses into gestures, maps them to interactive
+modes — and can mirror your entire body onto a 3D humanoid avatar rendered
+in OpenGL.
 
 ## Quick start
 
@@ -55,7 +56,31 @@ Switch with keys `1`–`4` or cycle with `m`.
    with an EMA. A template for wiring gestures to anything continuous
    (volume, brightness, zoom...).
 
-## Keys
+## Full-body 3D avatar
+
+A separate mode tracks your full body and mirrors your pose onto a lit,
+geometric 3D humanoid in an OpenGL window:
+
+```bash
+python -m handsense.body
+```
+
+The avatar is built from spheres (joints) and cylinders (limbs) with
+per-body-part coloring and OpenGL lighting. Your camera feed appears as a
+picture-in-picture in the corner.
+
+| Key | Action |
+|---|---|
+| arrow keys | orbit the 3D camera around the avatar |
+| `+` / `-` | zoom in / out |
+| `q` / `Esc` | quit |
+
+```
+python -m handsense.body [--camera N] [--width W] [--height H]
+                         [--no-mirror] [--avatar-size N]
+```
+
+## Keys (hand gesture modes)
 
 | Key | Action |
 |---|---|
@@ -95,3 +120,10 @@ python -m unittest discover -s tests -v
 - `handsense/modes.py` implements the four interactive modes; each consumes
   per-frame `(observation, gesture)` pairs and draws its own UI.
 - `handsense/main.py` runs the capture loop, mode switching, and HUD.
+- `handsense/pose_detector.py` wraps MediaPipe's `PoseLandmarker` for
+  full-body tracking (33 landmarks in both image and world coordinates).
+- `handsense/avatar.py` renders a geometric 3D humanoid in a pygame/OpenGL
+  window, positioned from the world-coordinate landmarks. Supports orbiting
+  the camera, zoom, and a camera-feed picture-in-picture.
+- `handsense/body.py` ties the pose detector and avatar together into a
+  real-time body-mirroring loop.
