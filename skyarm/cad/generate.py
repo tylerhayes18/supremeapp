@@ -56,6 +56,9 @@ def catalogue():
         "gripper_jaw": (parts.gripper_jaw, 1, "PETG-CF, TPU pads", ""),
         "gripper_jaw_mirror": (lambda: parts.gripper_jaw(True), 1,
                                "PETG-CF, TPU pads", ""),
+        "openarm_adapter": (parts.openarm_adapter, 1, "PETG-CF",
+                            "Z stage -> OpenArm base (see ALTERNATIVES.md;"
+                            " verify M6 grid vs their STEP)"),
     }
     for name, (fn, qty, mat, note) in gantry.items():
         cat[name] = (fn(), qty, mat, note)

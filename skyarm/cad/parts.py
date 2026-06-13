@@ -279,6 +279,38 @@ def forearm_tip() -> trimesh.Trimesh:
 
 
 # ---------------------------------------------------------------------------
+# Off-the-shelf arm integration (see docs/ALTERNATIVES.md)
+# ---------------------------------------------------------------------------
+
+# VERIFY against the OpenArm STEP (enactic/openarm_hardware) before
+# printing — the base plate is documented as "evenly spaced M6 taps".
+OPENARM_BASE_GRID_MM = 40.0
+OPENARM_GRID_N = 4                 # 4x4 M6 grid assumed
+
+
+def openarm_adapter() -> trimesh.Trimesh:
+    """Adapter: Z-stage gantry plate (20 mm M5 grid, C-beam standard) on
+    one face -> OpenArm base M6 grid on the other, for hanging the arm
+    inverted from the drop stage.  Print 1 in PETG-CF, 100% perimeters."""
+    t = 14.0
+    span = OPENARM_BASE_GRID_MM * (OPENARM_GRID_N - 1)
+    plate = rounded_plate(span + 60, span + 60, t)
+    cut = []
+    # OpenArm base: M6 clearance, counterbored from the gantry side
+    g0 = -span / 2
+    m6 = [(g0 + OPENARM_BASE_GRID_MM * i, g0 + OPENARM_BASE_GRID_MM * j)
+          for i in range(OPENARM_GRID_N) for j in range(OPENARM_GRID_N)]
+    cut += holes(6.4, t, m6)
+    cut += [cyl(11.5, 7.0, (cx, cy, t - 7.0 + 1)) for cx, cy in m6]
+    # C-beam gantry plate pattern: M5 on a 20 mm grid ring
+    ring = [(sx * 70, sy * 70) for sx in (-1, 1) for sy in (-1, 1)]
+    ring += [(sx * 70, 0) for sx in (-1, 1)] + [(0, sy * 70) for sy in (-1, 1)]
+    cut += holes(M5, t, ring)
+    cut.append(cyl(36, t))             # cable pass-through
+    return difference(plate, *cut)
+
+
+# ---------------------------------------------------------------------------
 # Wrist roll + leadscrew gripper
 # ---------------------------------------------------------------------------
 
