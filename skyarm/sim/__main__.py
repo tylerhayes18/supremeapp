@@ -82,7 +82,7 @@ def main() -> int:
     if args.headless:
         return headless_report()
     from .viewer import run_viewer
-    return run_viewer(demo=args.demo)
+    return run_viewer(demo=args.demo, real=args.real)
 
 
 if __name__ == "__main__":

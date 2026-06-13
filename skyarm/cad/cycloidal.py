@@ -207,10 +207,17 @@ def cover(spec: CycloSpec) -> trimesh.Trimesh:
     return P.difference(body, *cutters)
 
 
+def disc_samples(spec: CycloSpec) -> int:
+    """Profile resolution for manufacture: the gearsim jam check showed
+    that fewer than ~60 points per lobe leaves inscribed-chord material
+    in the concave troughs that binds against the ring pins."""
+    return max(1200, 60 * spec.reduction)
+
+
 def parts(spec: CycloSpec) -> dict:
     return {
         f"{spec.name}_housing": housing(spec),
-        f"{spec.name}_disc": disc(spec),          # print 2
+        f"{spec.name}_disc": disc(spec, samples=disc_samples(spec)),  # x2
         f"{spec.name}_cam": cam(spec),
         f"{spec.name}_output": output_flange(spec),
         f"{spec.name}_cover": cover(spec),

@@ -28,17 +28,18 @@ from . import scene
 from .world import World, demo_mission
 
 
-def run_viewer(demo: bool = False):
+def run_viewer(demo: bool = False, real: bool = False):
     import pygame
     from pygame.locals import (DOUBLEBUF, OPENGL, K_ESCAPE, K_SPACE, K_RETURN,
                                KEYDOWN, QUIT)
     from OpenGL.GL import (GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT,
                            GL_DEPTH_TEST, GL_LIGHT0, GL_LIGHTING, GL_MODELVIEW,
                            GL_NORMALIZE, GL_POSITION, GL_PROJECTION, GL_TRIANGLES,
-                           GL_COLOR_MATERIAL, glBegin, glClear, glClearColor,
-                           glColor3f, glEnable, glEnd, glLightfv, glLoadIdentity,
-                           glMatrixMode, glNormal3f, glVertex3f, glTranslatef,
-                           glRotatef)
+                           GL_COLOR_MATERIAL, GL_VERTEX_ARRAY, GL_NORMAL_ARRAY,
+                           GL_FLOAT, glClear, glClearColor,
+                           glColor3f, glEnable, glLightfv, glLoadIdentity,
+                           glMatrixMode, glEnableClientState, glVertexPointer,
+                           glNormalPointer, glDrawArrays)
     from OpenGL.GLU import gluPerspective, gluLookAt
 
     pygame.init()
@@ -53,9 +54,16 @@ def run_viewer(demo: bool = False):
     glEnable(GL_NORMALIZE)
     glClearColor(0.09, 0.10, 0.13, 1.0)
 
+    glEnableClientState(GL_VERTEX_ARRAY)
+    glEnableClientState(GL_NORMAL_ARRAY)
+
     world = World()
     if demo:
         demo_mission(world)
+    use_real = real
+    if use_real:
+        from .. import assembly                  # warm the part cache
+        assembly.machine(world.pose())
     target = np.array([kin.X_TRAVEL_MM / 2, kin.Y_TRAVEL_MM / 2,
                        kin.CEILING_MM - 1200.0])
     cam_yaw, cam_pitch, cam_dist = 35.0, 28.0, 5200.0
@@ -76,18 +84,22 @@ def run_viewer(demo: bool = False):
         gluLookAt(ex, ey, ez, *center, 0, 0, 1)
         glLightfv(GL_LIGHT0, GL_POSITION, (0.3, -0.5, 0.9, 0.0))
 
-        for verts, faces, color in scene.build(world, tuple(target)):
+        if use_real:
+            from .. import assembly
+            meshes = assembly.to_render(assembly.machine(world.pose()))
+        else:
+            meshes = scene.build(world, tuple(target))
+        for verts, faces, color in meshes:
             glColor3f(color[0] / 255, color[1] / 255, color[2] / 255)
-            tri = verts[faces]
-            normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
-            glBegin(GL_TRIANGLES)
-            for t, n in zip(tri, normals):
-                ln = np.linalg.norm(n)
-                if ln > 1e-12:
-                    glNormal3f(*(n / ln))
-                for v in t:
-                    glVertex3f(*v)
-            glEnd()
+            tri = np.asarray(verts, dtype=np.float32)[faces]      # (n,3,3)
+            n = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+            ln = np.linalg.norm(n, axis=1, keepdims=True)
+            ln[ln < 1e-12] = 1.0
+            normals = np.repeat((n / ln).astype(np.float32), 3, axis=0)
+            flat = tri.reshape(-1, 3)
+            glVertexPointer(3, GL_FLOAT, 0, flat)
+            glNormalPointer(GL_FLOAT, 0, normals)
+            glDrawArrays(GL_TRIANGLES, 0, len(flat))
         pygame.display.flip()
 
     while running:
@@ -114,6 +126,11 @@ def run_viewer(demo: bool = False):
                 elif event.key == pygame.K_h:
                     world.goto_joints(yaw=0, shoulder=0, elbow=0,
                                       wrist_pitch=0, wrist_roll=0)
+                elif event.key == pygame.K_v:
+                    use_real = not use_real
+                    if use_real:
+                        from .. import assembly
+                        assembly.machine(world.pose())   # warm cache
             elif event.type == pygame.MOUSEWHEEL:
                 cam_dist = max(1500.0, cam_dist - event.y * 300.0)
 

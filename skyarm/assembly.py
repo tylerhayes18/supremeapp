@@ -52,13 +52,38 @@ class Placed:
 
 
 _cache: dict = {}
+STL_DIR = Path(__file__).resolve().parent / "stl"
+
+
+def _stl_file(key: str) -> str:
+    """Map a cache key to its generated STL on disk, so the assembly can
+    load parts without the CAD build dependencies (manifold3d/shapely)."""
+    if key.endswith("-disc-coarse"):
+        return key[: -len("-disc-coarse")] + "_disc.stl"
+    if key.startswith("cyclo-"):
+        base, comp = key.rsplit("-", 1)
+        return f"{base}_{comp}.stl"
+    if key == "jaw-1":
+        return "gripper_jaw.stl"
+    if key == "jaw1":
+        return "gripper_jaw_mirror.stl"
+    if key == "upper_mid2":
+        return "upper_mid.stl"
+    return f"{key}.stl"
 
 
 def _part(name, builder, decimate=True):
     if name not in _cache:
-        m = builder()
+        stl = STL_DIR / _stl_file(name)
+        if stl.exists():
+            m = trimesh.load(str(stl), force="mesh")
+        else:
+            m = builder()
         if decimate and len(m.faces) > MAX_FACES:
-            m = m.simplify_quadric_decimation(face_count=MAX_FACES)
+            try:
+                m = m.simplify_quadric_decimation(face_count=MAX_FACES)
+            except BaseException:
+                pass               # fast-simplification not installed
         _cache[name] = m
     return _cache[name].copy()
 
