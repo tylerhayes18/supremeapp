@@ -13,7 +13,9 @@ import math
 
 import numpy as np
 import trimesh
-from shapely.geometry import Polygon
+
+# shapely is only needed when BUILDING parts (2D profile extrusion); the
+# viewer loads pre-generated STLs instead, so keep the import lazy
 
 ENGINE = "manifold"
 SEG = 96          # default circle segments
@@ -70,6 +72,7 @@ def cyl_y(d: float, h: float, at=(0, 0, 0), seg: int = SEG) -> trimesh.Trimesh:
 def rounded_plate(sx: float, sy: float, t: float, r: float = 6.0,
                   at=(0, 0, 0)) -> trimesh.Trimesh:
     """Rounded-corner plate centred in x/y on z=0."""
+    from shapely.geometry import Polygon
     poly = Polygon([(-sx / 2, -sy / 2), (sx / 2, -sy / 2),
                     (sx / 2, sy / 2), (-sx / 2, sy / 2)])
     poly = poly.buffer(-r).buffer(r, quad_segs=8)
@@ -79,6 +82,7 @@ def rounded_plate(sx: float, sy: float, t: float, r: float = 6.0,
 
 
 def extrude(points, t: float, holes=(), at=(0, 0, 0)) -> trimesh.Trimesh:
+    from shapely.geometry import Polygon
     poly = Polygon(points, holes=[list(h) for h in holes])
     m = trimesh.creation.extrude_polygon(poly, t)
     m.apply_translation(at)
