@@ -310,6 +310,24 @@ def openarm_adapter() -> trimesh.Trimesh:
     return difference(plate, *cut)
 
 
+def parol6_adapter() -> trimesh.Trimesh:
+    """Hang a PAROL6 (or its Z-stage) from the MGN15 carriage: MGN15H
+    block pattern on top, a 20 mm M5 grid below matching PAROL6's
+    aluminium-profile base mounting plates.  Print 1, PETG-CF."""
+    t = 12.0
+    plate = rounded_plate(230, 150, t)
+    cut = []
+    for by in (-75, 75):           # 2x MGN15H blocks, as on y_carriage
+        cut += holes(M3, t, [(sx * 22.5, by + sy * 13)
+                             for sx in (-1, 1) for sy in (-1, 1)])
+    # 20 mm M5 grid (V-slot / PAROL6 base plate convention)
+    cut += holes(M5, t, [(x, y) for x in range(-60, 61, 20)
+                         for y in range(-40, 41, 20)
+                         if (x, y) != (0, 0)])
+    cut.append(cyl(28, t))         # cable pass-through
+    return difference(plate, *cut)
+
+
 # ---------------------------------------------------------------------------
 # Wrist roll + leadscrew gripper
 # ---------------------------------------------------------------------------

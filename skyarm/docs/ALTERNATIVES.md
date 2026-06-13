@@ -74,7 +74,41 @@ ceiling rails / trucks / C-beam bridge / MGN15 carriage   (unchanged)
   bridge; verify the M6 grid spacing against the published STEP before
   printing (constant `OPENARM_BASE_GRID_MM`).
 
-## Sources
+## If you are printing the arm yourself: PAROL6
+
+OpenArm is machined aluminium (~$3.3k) — not a print-at-home project.
+For a self-built arm, **PAROL6 is the clear pick**:
+
+- **Everything needed to build it is in the repo** (GPLv3): full STL
+  set with a print table (quantities, filament, weights), BOM folder
+  (steppers, GT2 belts, bearings), step-by-step building instructions,
+  firmware, and a polished commander GUI.  Community-reported DIY
+  self-source cost is roughly €800–1000 incl. the control board
+  (sold ~€200, design files open).
+- Prints on any desktop printer (PETG), ~5.5 kg total, looks like a
+  miniature industrial cobot rather than a school project.
+- Active Discord/forum; the design is the matured successor of the
+  author's earlier Faze4 printed-cycloidal arm.
+- **Gripper:** build the matching **SSG-48** — printable, BLDC-driven
+  with 5–80 N closed-loop force control, not snap-together fingers.
+- Payload honesty: ~1 kg near base / 0.5 kg at full reach, 400 mm
+  reach.  Fine for fetching objects, light pick-and-place, camera work;
+  not for the 15 lb class (that remains SkyArm's territory).
+
+Runners-up for printable builds: **Thor** (AngelLM, fully printable,
+~750 g payload, older), **BCN3D Moveo** (big printed 5-axis, ~1 kg,
+unmaintained), **Faze4** (printed cycloidals, superseded by PAROL6).
+
+### Mounting PAROL6 on the gantry
+
+PAROL6's base bolts to standard aluminium profiles, which is exactly
+what the gantry is made of: bolt its base plate to the Z drop stage's
+C-beam gantry plate via `parol6_adapter` (cad/parts.py) — or, since the
+arm is only 5.5 kg with a 400 mm reach, skip the Z stage entirely and
+hang it straight from the carriage for a high-workspace configuration
+(tip covers ceiling−250 mm down to about ceiling−1.1 m; add the Z stage
+later if you want floor reach).  Worst-case arm moment is ~25 Nm —
+trivial inside the gantry's validated 169 Nm envelope.
 
 - https://github.com/enactic/openarm / https://github.com/enactic/openarm_hardware
 - https://docs.openarm.dev/

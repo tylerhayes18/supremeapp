@@ -59,6 +59,8 @@ def catalogue():
         "openarm_adapter": (parts.openarm_adapter, 1, "PETG-CF",
                             "Z stage -> OpenArm base (see ALTERNATIVES.md;"
                             " verify M6 grid vs their STEP)"),
+        "parol6_adapter": (parts.parol6_adapter, 1, "PETG-CF",
+                           "MGN15 carriage -> PAROL6 base 20 mm grid"),
     }
     for name, (fn, qty, mat, note) in gantry.items():
         cat[name] = (fn(), qty, mat, note)
